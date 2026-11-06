@@ -73,3 +73,14 @@ def draw_world(screen):
         pygame.draw.circle(screen, (100, 100, 100), campfire.center, 16)
         pygame.draw.circle(screen, (255, 120, 20), campfire.center, 10)
         pygame.draw.circle(screen, (255, 220, 50), campfire.center, 5)
+
+#RESET WORLD
+def reset_world():
+    global wood, stone
+
+    collected_trees.clear()
+    collected_rocks.clear()
+    campfires.clear()
+    wood = 0
+    stone = 0
+

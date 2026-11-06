@@ -77,6 +77,16 @@ def explore():
     else:
         print("You found nothing interesting.")
 
+def reset_survival():
+    global health, hunger, thirst, energy, is_alive
+
+    health = 100
+    hunger = 40
+    thirst = 50
+    energy = 60
+    is_alive = True
+
+
 
 
 

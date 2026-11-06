@@ -9,6 +9,7 @@ import messages
 import interactions
 import time_system
 import renderer
+import game_over as game_over_screen
 
 pygame.init()
 
@@ -25,6 +26,7 @@ pygame.display.set_caption("Wilderness Survival AI Simulator")
 #IN-GAME TIME
 start_time = pygame.time.get_ticks()
 day = 1
+days_survived = 0
 previous_elapsed_time = 0
 
 night_overlay = pygame.Surface((WIDTH, HEIGHT))
@@ -35,6 +37,33 @@ night_overlay.set_alpha(120)
 player = player_module.create_player(380, 280)
 player_speed = 5
 
+#RESTART GAME
+def restart_game():
+    global player, day, days_survived
+    global game_over, is_night
+    global start_time, previous_elapsed_time
+
+    #RESET SURVIVAL STATS
+    survival.reset_survival()
+
+    #RESET WORLD
+    world.reset_world()
+
+    #RESET PLAYER
+    player = player_module.create_player(380, 280)
+
+    #RESET DAY COUNTER
+    day = 1
+    days_survived = 0
+
+    #RESET GAME STATE
+    game_over = False
+    is_night = False
+
+    #RESET DAY/NIGHT TIMER
+    start_time = pygame.time.get_ticks()
+    previous_elapsed_time = 0
+
 #GAME LOOP
 while running:
 
@@ -43,11 +72,17 @@ while running:
         if event.type == pygame.QUIT:
             running = False
         elif event.type == pygame.KEYDOWN:
-            if survival.is_alive:
+            if game_over:
+                if event.key == pygame.K_r:
+                    restart_game()
+                elif event.key == pygame.K_q:
+                    running = False
+            elif survival.is_alive:
                 if event.key == pygame.K_e:
-                     interactions. interact_with_world(player)
+                     interactions.interact_with_world(player)
                 elif event.key == pygame.K_c:
                     interactions.craft_campfire(player)
+            
 
     #UPDATE DAY/NIGHT CYCLE
     if not game_over:
@@ -66,11 +101,11 @@ while running:
         #HANDLE NEW DAY
         if day_changed:
             survival.end_day()
+            days_survived = day - 1
 
             if not survival.is_alive:
                 game_over = True
                 is_night = False
-                messages.show_message("GAME OVER! Your survivor has died.")
             else:
                 messages.show_message(f"Day {day} begins!")
 
@@ -106,14 +141,19 @@ while running:
         )
        
     #RENDER GAME
-    renderer.draw_frame(
-        screen,
-        font,
-        day,
-        player,
-        is_night,
-        night_overlay
-    )
+    if game_over:
+        screen.fill((20, 20, 20))
+        game_over_screen.gameover(screen, font, days_survived)
+        pygame.display.flip()
+    else:
+        renderer.draw_frame(
+            screen,
+            font,
+            day,
+            player,
+            is_night,
+            night_overlay
+        )
 
     #LIMIT THE GAME TO 60FPS
     clock.tick(60)
