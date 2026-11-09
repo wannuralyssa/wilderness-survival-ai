@@ -23,6 +23,10 @@ font = pygame.font.SysFont("Arial", 17)
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Wilderness Survival AI Simulator")
 
+#LOAD GAME ASSETS
+renderer.load_assets()
+world.load_world_assets()
+
 #IN-GAME TIME
 start_time = pygame.time.get_ticks()
 day = 1

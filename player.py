@@ -29,5 +29,61 @@ def move_player(player, dx, dy, obstacles, width, height):
         if moved_player.colliderect(obstacle):
             return player
 
-    #UODATE THE PLAYER'S POSITION
+    #UPDATE THE PLAYER'S POSITION
     return moved_player
+
+def draw_player(screen, player_rect):
+    #PLAYER SHADOW
+    pygame.draw.ellipse(
+        screen, 
+        (35, 45, 30),
+        (player_rect.x + 5, player_rect.y + 31, 32, 9)
+    )
+
+    #BACKPACK
+    pygame.draw.rect(
+        screen,
+        (90, 75, 45),
+        (player_rect.x + 3, player_rect.y + 15, 10, 17),
+        border_radius = 3
+    )
+
+    #BODY/JACKET
+    pygame.draw.rect(
+        screen,
+        (120, 75, 45),
+        (player_rect.x + 10, player_rect.y + 16, 21, 17),
+        border_radius = 4
+    )
+
+    #HEAD
+    pygame.draw.circle(
+        screen,
+        (220, 175, 135),
+        (player_rect.centerx, player_rect.y + 10),
+        9
+    )
+
+    #HAIR
+    pygame.draw.arc(
+        screen,
+        (65, 40, 30),
+        (player_rect.centerx - 9, player_rect.y, 18, 17),
+        0, 3.14, 4
+    )
+
+    #BOOTS
+    pygame.draw.rect(
+        screen,
+        (45, 35, 30),
+        (player_rect.x + 23, player_rect.y + 30, 8, 7),
+        border_radius = 2
+    )
+
+    pygame.draw.rect(
+        screen,
+        (45, 35, 30),
+        (player_rect.x + 23, player_rect.y + 30, 8, 7),
+        border_radius = 2
+    )
+    
