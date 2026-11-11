@@ -161,7 +161,7 @@ while running:
         )
 
         #MOVE THE WOLVES
-        wolves.move_wolves(wolf_list, WIDTH, HEIGHT)
+        wolves.move_wolves(wolf_list, WIDTH, HEIGHT, player)
 
                
     #RENDER GAME

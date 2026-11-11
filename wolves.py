@@ -1,6 +1,7 @@
 
 import pygame
 import random
+import math
 
 
 def create_wolves():
@@ -15,37 +16,47 @@ def create_wolves():
     return wolf_list
 
 
-def move_wolves(wolves, width, height):
+def move_wolves(wolves, width, height, player):
     for wolf_data in wolves:
 
         wolf = wolf_data["rect"]
 
-        # Choose a new direction
-        if wolf_data["move_timer"] <= 0:
+        #CHECK IF WOLF DETECTS THE PLAYER
+        if detect_player(wolf, player):
+            dx = player.centerx - wolf.centerx
+            dy = player.centery - wolf.centery
+            distance = math.hypot(dx, dy)
 
-            wolf_data["direction"] = random.choice([
-                (1, 0),
-                (-1, 0),
-                (0, 1),
-                (0, -1),
-                (0, 0)
-            ])
+            #MOVE TOWARDS THE PLAYER
+            if distance > 0:
+                wolf.x += round((dx / distance) * 2)
+                wolf.y += round((dy / distance) * 2) 
+        else:
+            #RANDOM WANDERING
+            if wolf_data["move_timer"] <= 0:
+                wolf_data["direction"] = random.choice([
+                    (1, 0),
+                    (-1, 0),
+                    (0, 1),
+                    (0, -1),
+                ])
 
-            wolf_data["move_timer"] = random.randint(30, 90)
+                wolf_data["move_timer"] = random.randint(30, 90)
 
-        # Count down the timer
-        wolf_data["move_timer"] -= 1
+            wolf_data["move_timer"] -= 1
+            dx, dy = wolf_data["direction"]
+            wolf.x += dx * 2
+            wolf.y += dy * 2
 
-        # Move the wolf
-        dx, dy = wolf_data["direction"]
-
-        wolf.x += dx * 2
-        wolf.y += dy * 2
-
-        print("Wolf position: ", wolf.x, wolf.y)
-
-        # Keep wolf inside the screen
+        #KEEP WOLF INSIDE SCREEN
         wolf.clamp_ip(pygame.Rect(0, 0, width, height))
+
+def detect_player(wolf, player, detection_range = 180):
+    distance = math.hypot(
+        wolf.centerx - player.centerx,
+        wolf.centery - player.centery
+    )
+    return distance <= detection_range
 
 
 def draw_wolves(screen, wolves):
@@ -53,14 +64,14 @@ def draw_wolves(screen, wolves):
 
         wolf = wolf_data["rect"]
 
-        # BODY
+        #BODY
         pygame.draw.ellipse(
             screen,
             (100, 100, 100),
             (wolf.x, wolf.y + 8, 30, 18)
         )
 
-        # HEAD
+        #HEAD
         pygame.draw.circle(
             screen,
             (120, 120, 120),
@@ -68,7 +79,7 @@ def draw_wolves(screen, wolves):
             10
         )
 
-        # EARS
+        #EARS
         pygame.draw.polygon(
             screen,
             (80, 80, 80),
@@ -89,7 +100,7 @@ def draw_wolves(screen, wolves):
             ]
         )
 
-        # EYE
+        #EYE
         pygame.draw.circle(
             screen,
             (255, 220, 50),
