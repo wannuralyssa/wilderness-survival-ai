@@ -8,7 +8,7 @@ def gameover(screen, font, days_survived):
 
     #DAYS SURVIVED
     days_text = font.render(
-        f"You survived {days_survived} days!",
+        f"You survived {days_survived} day(s)!",
         True,
         (255, 255, 255)
     )

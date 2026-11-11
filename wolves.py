@@ -2,6 +2,8 @@
 import pygame
 import random
 import math
+import survival_system
+import messages
 
 
 def create_wolves():
@@ -9,7 +11,8 @@ def create_wolves():
         {
             "rect": pygame.Rect(150, 150, 40, 30),
             "direction": (0, 0),
-            "move_timer": 0
+            "move_timer": 0,
+            "attack_timer": 0
         }
     ]
 
@@ -50,6 +53,25 @@ def move_wolves(wolves, width, height, player):
 
         #KEEP WOLF INSIDE SCREEN
         wolf.clamp_ip(pygame.Rect(0, 0, width, height))
+
+def attack_player(wolves, player, survival, messages):
+    for wolf_data in wolves:
+        wolf = wolf_data["rect"]
+
+        #CHECK IF WOLF IS CLOSE ENOUGH TO ATTACK
+        if wolf.colliderect(player):
+            #ATTACK ONLY WHEN COOLDOWN REACHES ZERO
+            if wolf_data["attack_timer"] <= 0:
+                survival.wolf_attack()
+                messages.show_message(" A wolf attacked you! -20 Health")
+                survival.check_death()
+                #WAIT 2 SECONDS BEFORE ATTACKING AGAIN
+                wolf_data ["attack_timer"] = 120
+            #REDUCE ATTACK COOLDOWN
+            if wolf_data["attack_timer"] > 0:
+                wolf_data["attack_timer"] -= 1
+
+
 
 def detect_player(wolf, player, detection_range = 180):
     distance = math.hypot(
