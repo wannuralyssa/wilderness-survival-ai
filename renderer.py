@@ -6,6 +6,7 @@ import messages
 import survival_system as survival
 from config import *
 import player as player_module
+import wolves
 
 grass_texture = None
 
@@ -15,7 +16,7 @@ def load_assets():
         "assets/environment/grass.png"
     ).convert()
 
-def draw_frame(screen, font, day, player_rect, is_night, night_overlay):
+def draw_frame(screen, font, day, player_rect, player_direction, is_night, night_overlay, wolf_list):
     #DRAW BACKGROUND
     tile_size = 128
 
@@ -30,13 +31,14 @@ def draw_frame(screen, font, day, player_rect, is_night, night_overlay):
 
     #DRAW WORLD OBJECTS
     world.draw_world(screen)
+    wolves.draw_wolves(screen, wolf_list)
 
     #DRAW NIGHT EFFECT
     if is_night:
         screen.blit(night_overlay, (0, 0))
 
     #DRAW PLAYER
-    player_module.draw_player(screen, player_rect)
+    player_module.draw_player(screen, player_rect, player_direction)
 
     #DRAW HUD
     hud.draw_hud(

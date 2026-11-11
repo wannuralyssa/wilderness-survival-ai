@@ -10,6 +10,7 @@ import interactions
 import time_system
 import renderer
 import game_over as game_over_screen
+import wolves
 
 pygame.init()
 
@@ -39,6 +40,8 @@ night_overlay.set_alpha(120)
 
 #CREATE PLAYER
 player = player_module.create_player(380, 280)
+wolf_list = wolves.create_wolves()
+player_direction = "down"
 player_speed = 5
 
 #RESTART GAME
@@ -46,6 +49,7 @@ def restart_game():
     global player, day, days_survived
     global game_over, is_night
     global start_time, previous_elapsed_time
+    global wolf_list
 
     #RESET SURVIVAL STATS
     survival.reset_survival()
@@ -67,6 +71,9 @@ def restart_game():
     #RESET DAY/NIGHT TIMER
     start_time = pygame.time.get_ticks()
     previous_elapsed_time = 0
+
+    #RESET WOLVES
+    wolf_list = wolves.create_wolves()
 
 #GAME LOOP
 while running:
@@ -133,6 +140,15 @@ while running:
         if keys[pygame.K_DOWN]:
             dy = player_speed
 
+        if dx < 0:
+            player_direction = "left"
+        elif dx > 0:
+            player_direction = "right"
+        elif dy < 0:
+            player_direction = "up"
+        elif dy > 0: 
+            player_direction = "down"
+
     #MOVE THE PLAYER
     if not game_over:
         player = player_module.move_player(
@@ -143,7 +159,11 @@ while running:
             WIDTH,
             HEIGHT
         )
-       
+
+        #MOVE THE WOLVES
+        wolves.move_wolves(wolf_list, WIDTH, HEIGHT)
+
+               
     #RENDER GAME
     if game_over:
         screen.fill((20, 20, 20))
@@ -155,8 +175,10 @@ while running:
             font,
             day,
             player,
+            player_direction,
             is_night,
-            night_overlay
+            night_overlay,
+            wolf_list
         )
 
     #LIMIT THE GAME TO 60FPS
