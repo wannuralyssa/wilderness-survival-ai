@@ -161,14 +161,14 @@ while running:
         )
 
         #MOVE THE WOLVES
-        wolves.move_wolves(wolf_list, WIDTH, HEIGHT, player)
+        wolves.move_wolves(wolf_list, WIDTH, HEIGHT, player, world.obstacles)
 
         #WOLF ATTACK
         wolves.attack_player(wolf_list, player, survival, messages)
 
         if not survival.is_alive:
             game_over = True
-            dyas_survived = day - 1
+            days_survived = day - 1
 
                
     #RENDER GAME

@@ -4,6 +4,8 @@ import random
 import math
 import survival_system
 import messages
+import search
+import world
 
 
 def create_wolves():
@@ -12,28 +14,46 @@ def create_wolves():
             "rect": pygame.Rect(150, 150, 40, 30),
             "direction": (0, 0),
             "move_timer": 0,
-            "attack_timer": 0
+            "attack_timer": 0,
+            "path": [],
+            "path_index": 0,
+            "path_timer": 0
         }
     ]
 
     return wolf_list
 
 
-def move_wolves(wolves, width, height, player):
+def move_wolves(wolves, width, height, player, obstacles):
     for wolf_data in wolves:
 
         wolf = wolf_data["rect"]
 
         #CHECK IF WOLF DETECTS THE PLAYER
         if detect_player(wolf, player):
-            dx = player.centerx - wolf.centerx
-            dy = player.centery - wolf.centery
-            distance = math.hypot(dx, dy)
+            #RECALCULATE THE PATH EVERY 30 FRAMES
+            if wolf_data["path_timer"] <= 0:
+                wolf_data["path"] = find_wolf_path(
+                    wolf, player, obstacles
+                )
+                wolf_data["path_index"] = 1
+                wolf_data["path_timer"] = 30
+            wolf_data["path_timer"] -= 1
+            path = wolf_data["path"]
 
-            #MOVE TOWARDS THE PLAYER
-            if distance > 0:
-                wolf.x += round((dx / distance) * 2)
-                wolf.y += round((dy / distance) * 2) 
+            if path and wolf_data["path_index"] < len(path):
+                row, col = path[wolf_data["path_index"]]
+                target_x = col * 40 + 20
+                target_y = row * 40 + 20
+                dx = target_x - wolf.centerx
+                dy = target_y - wolf.centery
+                distance = math.hypot(dx, dy)
+
+                if distance <= 3:
+                    wolf_data["path_index"] += 1
+                elif distance > 0:
+                    wolf.x += round((dx / distance) * 2)
+                    wolf.y += round((dy / distance) * 2)
         else:
             #RANDOM WANDERING
             if wolf_data["move_timer"] <= 0:
@@ -80,6 +100,12 @@ def detect_player(wolf, player, detection_range = 180):
     )
     return distance <= detection_range
 
+def find_wolf_path(wolf, player, obstacles):
+    cell_size = 40
+    grid = search.create_grid(800, 600, cell_size, obstacles)
+    start = (wolf.centery // cell_size, wolf.centerx // cell_size)
+    goal = (player.centery // cell_size, player.centerx // cell_size)
+    return search.bfs(grid, start, goal)
 
 def draw_wolves(screen, wolves):
     for wolf_data in wolves:
