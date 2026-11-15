@@ -86,3 +86,5 @@ Currently under development. The basic survival mechanics and playable Pygame pr
 ---
 
 Created as an individual Artificial Intelligence course project.
+Copyright (c) 2026 Wan Alyssa.
+All rights reserved.
