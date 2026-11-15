@@ -86,5 +86,17 @@ Currently under development. The basic survival mechanics and playable Pygame pr
 ---
 
 Created as an individual Artificial Intelligence course project.
-Copyright (c) 2026 Wan Alyssa.
-All rights reserved.
+
+## Copyright
+
+Copyright (c) 2026 Wan Alyssa. All rights reserved.
+
+This project, including its original source code, documentation,
+and original creative assets, is my own work.
+
+No permission is granted to copy, redistribute, modify, or
+commercially use this work without prior written permission,
+except where applicable law or third-party licences permit otherwise.
+
+Third-party libraries and assets remain subject to their
+respective licences.
