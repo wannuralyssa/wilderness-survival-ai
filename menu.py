@@ -4,6 +4,7 @@ import math
 import pygame
 from config import *
 import world
+import audio
 
 OPTIONS = ["Play", "Watch AI Survive", "How to Play", "Quit"]
 
@@ -13,7 +14,8 @@ CONTROLS = [
     ("Space", "Attack a wolf in front of you"),
     ("C", "Build a campfire (3 wood, 2 stone)"),
     ("T", "Build a tent (4 wood)"),
-    ("Esc", "Back to the main menu")
+    ("Esc", "Back to the main menu"),
+    ("V", "Sound on / off")
 ]
 
 TIPS = [
@@ -102,7 +104,7 @@ def _draw_main(screen, selected, now):
 
 
 def _draw_help(screen):
-    panel = pygame.Rect(0, 0, 640, 490)
+    panel = pygame.Rect(0, 0, 640, 520)
     panel.center = (WIDTH // 2, HEIGHT // 2)
     _panel(screen, panel, (18, 22, 28, 225), (250, 204, 96, 160))
 
@@ -131,6 +133,8 @@ def run(screen, clock):
     _fonts()
     selected = 0
     showing_help = False
+    audio.stop_loops()
+    audio.play_music("music_menu")
 
     while True:
         clock.tick(60)
@@ -145,26 +149,33 @@ def run(screen, clock):
                         event.type == pygame.KEYDOWN and event.key in (
                             pygame.K_RETURN, pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_BACKSPACE)):
                     showing_help = False
+                    audio.play("menu_move")
                 continue
 
             choice = None
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_UP, pygame.K_w):
                     selected = (selected - 1) % len(OPTIONS)
+                    audio.play("menu_move")
                 elif event.key in (pygame.K_DOWN, pygame.K_s):
                     selected = (selected + 1) % len(OPTIONS)
+                    audio.play("menu_move")
+                elif event.key == pygame.K_v:
+                    audio.toggle_mute()
                 elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
                     choice = selected
             elif event.type == pygame.MOUSEMOTION:
                 for i, rect in enumerate(_button_rects()):
-                    if rect.collidepoint(event.pos):
+                    if rect.collidepoint(event.pos) and selected != i:
                         selected = i
+                        audio.play("menu_move")
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 for i, rect in enumerate(_button_rects()):
                     if rect.collidepoint(event.pos):
                         choice = i
 
             if choice is not None:
+                audio.play("menu_select")
                 if OPTIONS[choice] == "Play":
                     return "play"
                 if OPTIONS[choice] == "Watch AI Survive":

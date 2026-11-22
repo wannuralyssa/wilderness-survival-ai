@@ -7,6 +7,7 @@ from config import *
 import survival_system as survival
 import messages
 import world
+import audio
 
 #WEATHER TYPES
 CLEAR = "clear"
@@ -163,12 +164,15 @@ def _update_weather_state(dt):
 
         if current == RAIN:
             #THE RAIN PUTS OUT EVERY CAMPFIRE
+            audio.play("thunder")
             if world.extinguish_campfires() > 0:
                 messages.show_message("Heavy rain! It put out your campfire.", 3000)
+                audio.play("extinguish")
             else:
                 messages.show_message("Heavy rain! Find shelter.", 3000)
         elif current == COLD:
             messages.show_message("A cold snap! Stay near a campfire.", 3000)
+            audio.play("wind_gust")
         elif previous != CLEAR:
             messages.show_message("The weather clears up.", 2500)
 

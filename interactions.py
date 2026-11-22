@@ -3,6 +3,7 @@ import world
 import messages
 import survival_system as survival
 import weather
+import audio
 
 CAMPFIRE_WOOD_COST = 3
 CAMPFIRE_STONE_COST = 2
@@ -14,6 +15,7 @@ def craft_campfire(player_rect):
     #YOU CAN'T START A FIRE IN THE POURING RAIN
     if weather.current == weather.RAIN:
         messages.show_message("It's too wet to light a fire!", 1500)
+        audio.play("fail")
         return
 
     if world.wood >= CAMPFIRE_WOOD_COST and world.stone >= CAMPFIRE_STONE_COST:
@@ -22,21 +24,25 @@ def craft_campfire(player_rect):
         campfire.midtop = (player_rect.centerx, player_rect.bottom + 6)
         if campfire.collidelist(world.obstacles) != -1:
             messages.show_message("Not enough space here for a campfire!", 1500)
+            audio.play("fail")
             return
 
         world.wood -= CAMPFIRE_WOOD_COST
         world.stone -= CAMPFIRE_STONE_COST
         world.add_campfire(campfire)
+        audio.play("build_fire")
 
         messages.show_message("Campfire crafted!")
     else:
         messages.show_message(f"Need {CAMPFIRE_WOOD_COST} wood and {CAMPFIRE_STONE_COST} stone!")
+        audio.play("fail")
 
 
 def craft_tent(player_rect):
     #A TENT IS SHELTER FROM RAIN AND COLD: STAND INSIDE IT
     if world.wood < TENT_WOOD_COST:
         messages.show_message(f"Need {TENT_WOOD_COST} wood to build a tent!", 1500)
+        audio.play("fail")
         return
 
     tent = pygame.Rect(0, 0, 64, 40)
@@ -44,10 +50,12 @@ def craft_tent(player_rect):
 
     if tent.collidelist(world.obstacles) != -1:
         messages.show_message("Not enough space here for a tent!", 1500)
+        audio.play("fail")
         return
 
     world.wood -= TENT_WOOD_COST
     world.tents.append(tent)
+    audio.play("build_tent")
     messages.show_message("Tent built! Stand inside it to shelter.", 2500)
 
 
@@ -55,6 +63,7 @@ def rest_at_campfire():
     if survival.energy < 100:
         survival.energy = min(survival.energy + 30, 100)
         messages.show_message("You rested by the campfire! 30 energy restored.")
+        audio.play("rest")
     else:
         messages.show_message("You are already fully rested!")
 
@@ -62,12 +71,15 @@ def rest_at_campfire():
 def relight_campfire(index):
     if weather.current == weather.RAIN:
         messages.show_message("Too wet to relight! Wait for the rain to stop.", 2000)
+        audio.play("fail")
     elif world.wood >= RELIGHT_WOOD_COST:
         world.wood -= RELIGHT_WOOD_COST
         world.campfire_lit[index] = True
+        audio.play("relight")
         messages.show_message(f"You relit the campfire! (-{RELIGHT_WOOD_COST} wood)", 1500)
     else:
         messages.show_message(f"Need {RELIGHT_WOOD_COST} wood to relight the campfire!", 1500)
+        audio.play("fail")
 
 
 def interact_with_world(player_rect):
@@ -84,6 +96,7 @@ def interact_with_world(player_rect):
     # CHECK WATER (PONDS AND THE RIVER)
     if world.near_water(player_rect):
         survival.drink_water()
+        audio.play("drink")
         messages.show_message("You drank fresh water! Thirst decreased.")
         return
 
@@ -92,9 +105,11 @@ def interact_with_world(player_rect):
         if player_rect.colliderect(bush.inflate(40, 40)):
             if world.eat_from_bush(i):
                 survival.eat_berries()
+                audio.play("eat")
                 messages.show_message("You ate wild berries! Hunger decreased.")
             else:
                 messages.show_message("No berries left. They will grow back.")
+                audio.play("fail")
             return
 
     # CHECK TREES (HARVESTED TREES GROW BACK AFTER A WHILE)
@@ -103,9 +118,11 @@ def interact_with_world(player_rect):
             if i not in world.collected_trees:
                 world.wood += 1
                 world.collect_tree(i)
+                audio.play("chop")
                 messages.show_message("You collected 1 wood!")
             else:
                 messages.show_message("This tree needs time to grow back.")
+                audio.play("fail")
             return
 
     # CHECK ROCKS (MINED ROCKS COME BACK AFTER A WHILE)
@@ -114,15 +131,18 @@ def interact_with_world(player_rect):
             if i not in world.collected_rocks:
                 world.stone += 1
                 world.collect_rock(i)
+                audio.play("mine")
                 messages.show_message("You collected 1 stone!")
             else:
                 messages.show_message("This rock is mined out for now.")
+                audio.play("fail")
             return
 
     # CHECK TENTS
     for tent in world.tents:
         if tent.collidepoint(player_rect.center):
             messages.show_message("You rest in your tent, safe from the weather.", 2000)
+            audio.play("rest")
             return
 
     # NOTHING FOUND

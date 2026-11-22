@@ -17,6 +17,7 @@ import ai_agent
 import os
 import game_clock
 import difficulty
+import audio
 
 pygame.init()
 
@@ -31,6 +32,7 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Wilderness Survival AI Simulator")
 
 #LOAD GAME ASSETS
+audio.init()
 renderer.load_assets()
 world.load_world_assets()
 player_module.load_player_frames()
@@ -139,6 +141,7 @@ def update_game(dt):
     global player, player_direction, player_is_moving
 
     game_clock.advance(dt)
+    was_night = is_night
 
     #UPDATE DAY/NIGHT CYCLE
     (
@@ -156,8 +159,14 @@ def update_game(dt):
     #HANDLE NEW DAY: THE WILDERNESS GETS HARSHER
     if day_changed:
         days_survived = day - 1
+        audio.play("birds")
         difficulty.apply(day)
         messages.show_message(f"Day {day}: it gets harsher ({difficulty.describe(day)})", 3500)
+
+    #A WOLF HOWLS AS NIGHT FALLS
+    if is_night and not was_night:
+        audio.play("howl")
+        wolves.start_howl(wolf_list)
 
     #INPUT: FROM THE AI, OR FROM THE KEYBOARD
     dx = 0
@@ -224,6 +233,11 @@ def update_game(dt):
         player.y != previous_y
     )
 
+    #FOOTSTEPS (SKIPPED WHILE THE AI FAST-FORWARDS, OR IT WOULD BE A RATTLE)
+    if player_is_moving and not (ai_mode and sim_speed > 2):
+        audio.footstep(abs(player.x - previous_x) + abs(player.y - previous_y),
+                       world.terrain_at(player.centerx, player.bottom - 4))
+
     #MOVE THE WOLVES
     wolves.move_wolves(wolf_list, WORLD_WIDTH, WORLD_HEIGHT, player, world.obstacles)
 
@@ -245,6 +259,7 @@ def update_game(dt):
     if not survival.is_alive:
         game_over = True
         days_survived = day - 1
+        audio.play("game_over")
 
 
 #GAME LOOP
@@ -264,6 +279,9 @@ while running:
                     #BACK TO THE MAIN MENU
                     if not open_menu():
                         running = False
+            elif event.key == pygame.K_v:
+                #SOUND ON / OFF
+                audio.toggle_mute()
             elif event.key == pygame.K_ESCAPE:
                 #BACK TO THE MAIN MENU DURING A GAME
                 if not open_menu():
@@ -295,6 +313,9 @@ while running:
 
     if game_over:
         player_is_moving = False
+
+    #MUSIC FOR THE TIME OF DAY, AND RAIN / WIND / CAMPFIRE SOUNDS
+    audio.update_world(weather, world, player, game_over)
 
     #UPDATE PLAYER ANIMATION
     player_module.update_player_animation(player_is_moving, player_direction, dt * steps)

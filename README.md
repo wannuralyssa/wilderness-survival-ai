@@ -8,6 +8,7 @@ The player must survive in a wilderness environment by collecting resources, man
 
 - **Player movement:** Explore the environment using keyboard controls.
 - **Resource collection:** Gather wood, stone, wild berries, and water. Harvested trees and rocks grow back after a while; each berry bush can be eaten from 3 times, then needs to grow back.
+- **Music and sound:** Original music (menu, day and night themes that crossfade), ambient rain, wind and campfire sounds, footsteps that change with the ground, and effects for every action. All synthesized from code by `make_audio.py`: no samples or downloads.
 - **Growing difficulty:** Every day the wilderness gets harsher (`difficulty.py`): more and tougher wolves, faster hunger and thirst, slower healing and regrowth, and more frequent, harsher bad weather. Every run eventually ends, so days survived is a real score.
 - **Main menu:** Play yourself, watch the AI survive, read how to play, or quit (keyboard or mouse). Esc returns to the menu.
 - **Survival system:** Manage health, hunger, thirst, and energy.
@@ -38,6 +39,7 @@ The player must survive in a wilderness environment by collecting resources, man
 | T | Build a tent (4 wood) |
 | R / M / Q | Restart / main menu / quit on the game over screen |
 | 1 / 2 / 3 / 4 | AI mode only: speed x1 / x2 / x4 / x8 |
+| V | Sound on / off |
 
 ## 🛠️ Technologies
 

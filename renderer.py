@@ -39,7 +39,7 @@ def draw_frame(screen, font, day, player_rect, player_direction, is_night, night
     for sort_y, image, position in world.get_sprites(camera):
         drawables.append((sort_y, lambda image=image, position=position: screen.blit(image, position)))
 
-    for wolf_data in wolf_list:
+    for wolf_data in wolves.dying_wolves + wolf_list:
         drawables.append((
             wolf_data["rect"].bottom,
             lambda wolf_data=wolf_data: wolves.draw_wolf(screen, wolf_data, offset)
