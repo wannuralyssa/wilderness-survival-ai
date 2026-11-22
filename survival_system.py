@@ -6,8 +6,14 @@ thirst = 50
 energy = 60
 is_alive = True
 
-#WOLF BITES
+#WOLF BITES (difficulty.py RAISES THIS AS THE DAYS GO BY)
 WOLF_DAMAGE = 10
+
+#HUNGER AND THIRST RISE STEADILY DURING THE DAY (POINTS PER FULL DAY + NIGHT)
+HUNGER_PER_DAY = 15
+THIRST_PER_DAY = 20
+_need_buffer = [0.0, 0.0]
+_starve_timer = 0
 
 #HEALTH REGENERATION: +1 HEALTH EVERY REGEN_INTERVAL MILLISECONDS, BUT ONLY WHEN
 #FED, HYDRATED, NOT EXHAUSTED, AND NOT BITTEN RECENTLY
@@ -66,6 +72,28 @@ def regenerate(dt, resting=False):
         health = min(100, health + 1)
         _regen_timer -= REGEN_INTERVAL
 
+def drain_needs(dt, day_length):
+    #CALL EVERY FRAME. HUNGER AND THIRST GO UP A LITTLE ALL THE TIME;
+    #AT 100 THE PLAYER STARTS LOSING HEALTH (STARVING / DEHYDRATED)
+    global hunger, thirst, health, _starve_timer
+    _need_buffer[0] += HUNGER_PER_DAY * dt / day_length
+    _need_buffer[1] += THIRST_PER_DAY * dt / day_length
+    if _need_buffer[0] >= 1:
+        hunger = min(100, hunger + int(_need_buffer[0]))
+        _need_buffer[0] -= int(_need_buffer[0])
+    if _need_buffer[1] >= 1:
+        thirst = min(100, thirst + int(_need_buffer[1]))
+        _need_buffer[1] -= int(_need_buffer[1])
+
+    if hunger >= 100 or thirst >= 100:
+        _starve_timer += dt
+        while _starve_timer >= 1500:
+            health = max(0, health - 1)
+            _starve_timer -= 1500
+        check_death()
+    else:
+        _starve_timer = 0
+
 def sleep():
     global energy
     energy = min(energy + 30, 100)
@@ -120,6 +148,9 @@ def reset_survival():
     regenerating = False
     _regen_timer = 0
     _time_since_hit = 999999
+    global _starve_timer
+    _need_buffer[0] = _need_buffer[1] = 0.0
+    _starve_timer = 0
 
     health = 100
     hunger = 40

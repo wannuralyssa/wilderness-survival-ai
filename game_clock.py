@@ -1,0 +1,14 @@
+
+#GAME CLOCK: MILLISECONDS OF *GAME* TIME.
+#IT ONLY MOVES WHILE THE GAME IS RUNNING, AND CAN RUN FASTER THAN REAL TIME
+#(AI MODE FAST-FORWARD RUNS SEVERAL GAME STEPS FOR EVERY FRAME DRAWN).
+_now = 0
+
+
+def now():
+    return _now
+
+
+def advance(ms):
+    global _now
+    _now += ms

@@ -88,10 +88,13 @@ def interact_with_world(player_rect):
         return
 
     # CHECK BERRY BUSHES
-    for bush in world.berry_bushes:
+    for i, bush in enumerate(world.berry_bushes):
         if player_rect.colliderect(bush.inflate(40, 40)):
-            survival.eat_berries()
-            messages.show_message("You ate wild berries! Hunger decreased.")
+            if world.eat_from_bush(i):
+                survival.eat_berries()
+                messages.show_message("You ate wild berries! Hunger decreased.")
+            else:
+                messages.show_message("No berries left. They will grow back.")
             return
 
     # CHECK TREES (HARVESTED TREES GROW BACK AFTER A WHILE)

@@ -8,6 +8,7 @@ from config import *
 import player as player_module
 import wolves
 import weather
+import ai_agent
 
 #THE CAMERA IS THE PART OF THE WORLD SHOWN ON SCREEN
 camera = pygame.Rect(0, 0, WIDTH, HEIGHT)
@@ -24,7 +25,7 @@ def update_camera(target_rect):
     camera.clamp_ip(pygame.Rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT))
 
 
-def draw_frame(screen, font, day, player_rect, player_direction, is_night, night_overlay, wolf_list):
+def draw_frame(screen, font, day, player_rect, player_direction, is_night, night_overlay, wolf_list, ai=None):
     update_camera(player_rect)
     offset = camera.topleft
 
@@ -62,6 +63,10 @@ def draw_frame(screen, font, day, player_rect, player_direction, is_night, night
         wolf_list,
         [wolves.eye_positions(wolf_data) for wolf_data in wolf_list]
     )
+
+    #AI MODE: SHOW THE AI'S PLAN AND WHAT IT IS THINKING
+    if ai is not None:
+        ai_agent.draw_overlay(screen, ai, camera, player_rect)
 
     #DRAW HUD (STATS, DAY, WEATHER AND RESOURCES)
     hud.draw_hud(

@@ -5,6 +5,7 @@ import pygame
 from config import *
 import map_layout as layout
 import map_objects as objects
+import game_clock
 
 CELL_SIZE = 40          #GRID SIZE USED BY A* PATHFINDING
 TILE = 20               #FINER GRID USED FOR CLIFF SHAPES, RIVER AND TERRAIN
@@ -16,6 +17,9 @@ PLAYER_START = layout.PLAYER_START
 #HOW LONG UNTIL A HARVESTED TREE OR ROCK CAN BE HARVESTED AGAIN (MILLISECONDS)
 TREE_REGROW_TIME = 90000
 ROCK_REGROW_TIME = 120000
+BUSH_REGROW_TIME = 60000
+BUSH_SERVINGS = 3           #A BUSH CAN BE EATEN FROM 3 TIMES, THEN IT NEEDS TO GROW BACK
+REGROW_MULTIPLIER = 1.0     #difficulty.py MAKES REGROWING SLOWER ON LATER DAYS
 
 
 #================================================================
@@ -30,6 +34,8 @@ ponds = [pygame.Rect(*p) for p in layout.PONDS]
 #HARVESTED TREES AND ROCKS: {INDEX: TIME WHEN IT GROWS BACK}
 collected_trees = {}
 collected_rocks = {}
+collected_bushes = {}       #EMPTY BUSHES: {INDEX: TIME WHEN BERRIES GROW BACK}
+bush_servings = {}          #BERRIES LEFT ON A BUSH (MISSING = FULL)
 wood = 0
 stone = 0
 
@@ -309,16 +315,27 @@ def get_cost_grid():
 # RESOURCES AND CAMPFIRES
 #================================================================
 def collect_tree(index):
-    collected_trees[index] = pygame.time.get_ticks() + TREE_REGROW_TIME
+    collected_trees[index] = game_clock.now() + TREE_REGROW_TIME * REGROW_MULTIPLIER
 
 
 def collect_rock(index):
-    collected_rocks[index] = pygame.time.get_ticks() + ROCK_REGROW_TIME
+    collected_rocks[index] = game_clock.now() + ROCK_REGROW_TIME * REGROW_MULTIPLIER
+
+
+def eat_from_bush(index):
+    #RETURNS TRUE IF THE BUSH HAD BERRIES
+    if index in collected_bushes:
+        return False
+    bush_servings[index] = bush_servings.get(index, BUSH_SERVINGS) - 1
+    if bush_servings[index] <= 0:
+        del bush_servings[index]
+        collected_bushes[index] = game_clock.now() + BUSH_REGROW_TIME * REGROW_MULTIPLIER
+    return True
 
 
 def update(now):
-    #REGROW TREES AND ROCKS WHOSE TIME HAS COME
-    for collected in (collected_trees, collected_rocks):
+    #REGROW TREES, ROCKS AND BERRY BUSHES WHOSE TIME HAS COME
+    for collected in (collected_trees, collected_rocks, collected_bushes):
         for index in [i for i, t in collected.items() if now >= t]:
             del collected[index]
 
@@ -349,6 +366,7 @@ depleted_trees = []
 scaled_rock = None
 depleted_rock = None
 scaled_bush = None
+empty_bush = None
 log_image = None
 tent_image = None
 campfire_frames = []
@@ -364,7 +382,7 @@ def _darker(image, color):
 
 def load_world_assets():
     global scaled_water, scaled_trees, depleted_trees, scaled_rock, depleted_rock
-    global scaled_bush, log_image, tent_image, campfire_frames, campfire_out_image
+    global scaled_bush, empty_bush, log_image, tent_image, campfire_frames, campfire_out_image
 
     def load(name):
         return pygame.image.load(f"assets/environment/{name}").convert_alpha()
@@ -380,6 +398,8 @@ def load_world_assets():
     #MINED ROCKS SHRINK TO A SMALL PILE
     depleted_rock = _darker(pygame.transform.smoothscale(load("rock.png"), (34, 28)), (170, 165, 160))
     scaled_bush = pygame.transform.smoothscale(load("berry_bush.png"), (65, 55))
+    #A BUSH WITH NO BERRIES LEFT LOOKS DULL UNTIL IT GROWS BACK
+    empty_bush = _darker(scaled_bush, (130, 150, 120))
     log_image = load("log.png")
     tent_image = load("tent.png")
     campfire_frames = [load(f"campfire_{i}.png") for i in range(3)]
@@ -669,9 +689,9 @@ def get_sprites(camera):
                 sprites.append((rock.bottom, scaled_rock,
                                 (rock.centerx - 27 - camera.x, rock.bottom - 45 - camera.y)))
 
-    for bush in berry_bushes:
+    for i, bush in enumerate(berry_bushes):
         if view.colliderect(bush):
-            sprites.append((bush.bottom, scaled_bush,
+            sprites.append((bush.bottom, empty_bush if i in collected_bushes else scaled_bush,
                             (bush.centerx - 32 - camera.x, bush.bottom - 55 - camera.y)))
 
     #TENTS ARE SORTED BY THEIR BACK EDGE, SO THE PLAYER IS DRAWN IN FRONT WHEN INSIDE
@@ -681,7 +701,7 @@ def get_sprites(camera):
             sprites.append((tent.top, tent_image, (pos[0] - camera.x, pos[1] - camera.y)))
 
     #CAMPFIRES FLICKER BETWEEN 3 FRAMES; PUT-OUT CAMPFIRES SHOW ASHES
-    frame = (pygame.time.get_ticks() // 120) % len(campfire_frames)
+    frame = (game_clock.now() // 120) % len(campfire_frames)
     for campfire, lit in zip(campfires, campfire_lit):
         if view.colliderect(campfire):
             image = campfire_frames[frame] if lit else campfire_out_image
@@ -697,6 +717,8 @@ def reset_world():
 
     collected_trees.clear()
     collected_rocks.clear()
+    collected_bushes.clear()
+    bush_servings.clear()
     campfires.clear()
     campfire_lit.clear()
     tents.clear()

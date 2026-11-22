@@ -1,12 +1,13 @@
 
 import pygame
+import game_clock
 from config import *
 
 
 def update_day_cycle(start_time, previous_elapsed_time, day):
     #CALCULATE ELAPSED TIME IN THE CURRENT DAY/NIGHT CYCLE
     elapsed_time = (
-        pygame.time.get_ticks() - start_time
+        game_clock.now() - start_time
     ) % CYCLE_DURATION
 
     #DETERMINE WHETHER IT IS IGHTTIME

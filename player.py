@@ -1,5 +1,6 @@
 import math
 import pygame
+import game_clock
 
 ANIMATION_SPEED = 150          #MILLISECONDS PER WALK FRAME
 SPRITE_SIZE = (48, 64)         #ON-SCREEN SIZE OF THE CHARACTER
@@ -33,7 +34,7 @@ SWING_ANGLES = {
 
 def start_attack():
     global attack_start_time
-    attack_start_time = pygame.time.get_ticks()
+    attack_start_time = game_clock.now()
 
 
 def load_player_frames():
@@ -128,7 +129,7 @@ def draw_player(screen, player_rect, direction="down", offset=(0, 0)):
     screen.blit(image, sprite_rect)
 
     #SWING EFFECT: A WHITE ARC SWEEPING ACROSS THE FRONT OF THE PLAYER
-    elapsed = pygame.time.get_ticks() - attack_start_time
+    elapsed = game_clock.now() - attack_start_time
     if 0 <= elapsed < ATTACK_EFFECT_TIME:
         progress = elapsed / ATTACK_EFFECT_TIME
         middle = SWING_ANGLES[direction]

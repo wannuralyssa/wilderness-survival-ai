@@ -7,6 +7,7 @@ import messages
 import search
 import world
 import weather
+import game_clock
 
 #WOLF SPRITES
 WOLF_ANIMATION_SPEED = 8      #FRAMES BETWEEN WALK FRAMES
@@ -16,6 +17,8 @@ WOLF_SPEED = 2                #PIXELS PER FRAME ON NORMAL GRASS
 
 #COMBAT
 WOLF_MAX_HEALTH = 3           #HITS NEEDED TO DEFEAT A WOLF
+TARGET_WOLVES = 4             #HOW MANY WOLVES ROAM THE MAP (difficulty.py RAISES IT)
+DETECTION_BONUS = 0           #EXTRA SMELL RANGE ON LATER DAYS
 WOLF_STUN_FRAMES = 40         #A HIT WOLF CAN'T MOVE OR BITE FOR THIS LONG
 WOLF_RESPAWN_TIME = 30000     #A DEFEATED WOLF IS REPLACED AFTER 30 SECONDS
 RESPAWN_MIN_DISTANCE = 600    #NEW WOLVES APPEAR FAR AWAY FROM THE PLAYER
@@ -77,6 +80,7 @@ def make_wolf(x, y):
         "fx": float(x),
         "fy": float(y),
         "health": WOLF_MAX_HEALTH,
+        "max_health": WOLF_MAX_HEALTH,
         "stun_timer": 0,
         "flash_timer": 0,
         "knock_vx": 0.0,
@@ -119,7 +123,7 @@ def move_wolves(wolves, width, height, player, obstacles):
                       dy / max(1, distance_to_player) * speed)
             if wolf.collidelist(obstacles) != -1:
                 wolf.x, wolf.y, wolf_data["fx"], wolf_data["fy"] = saved
-        elif detect_player(wolf, player, weather.wolf_detection_range()):
+        elif detect_player(wolf, player, weather.wolf_detection_range() + DETECTION_BONUS):
             #RECALCULATE THE PATH EVERY 30 FRAMES
             if wolf_data["path_timer"] <= 0:
                 wolf_data["path"] = find_wolf_path(
@@ -206,7 +210,7 @@ def player_attack(wolves, player_rect, direction, survival):
     #THE PLAYER SWINGS AT WHATEVER IS IN FRONT OF THEM. RETURNS TRUE IF THE SWING HAPPENED
     global last_player_attack, wolves_defeated
 
-    now = pygame.time.get_ticks()
+    now = game_clock.now()
     if now - last_player_attack < PLAYER_ATTACK_COOLDOWN:
         return False
     if survival.energy < PLAYER_ATTACK_ENERGY:
@@ -245,14 +249,18 @@ def player_attack(wolves, player_rect, direction, survival):
 
 def update_respawns(wolves, player_rect):
     #REPLACE DEFEATED WOLVES SO THE FOREST NEVER RUNS OUT OF THEM
-    now = pygame.time.get_ticks()
+    now = game_clock.now()
+
+    #ON LATER DAYS MORE WOLVES ARRIVE (THEY APPEAR FAR AWAY, LIKE RESPAWNS)
+    while len(wolves) + len(respawn_times) < TARGET_WOLVES:
+        respawn_times.append(now)
     for due in [t for t in respawn_times if now >= t]:
         #PICK THE SPAWN POINT FARTHEST FROM THE PLAYER (MUST BE FAR ENOUGH AWAY)
         spawns = sorted(
             WOLF_SPAWNS,
             key=lambda p: -math.hypot(p[0] - player_rect.centerx, p[1] - player_rect.centery)
         )
-        x, y = spawns[0]
+        x, y = random.choice(spawns[:2])
         if math.hypot(x - player_rect.centerx, y - player_rect.centery) < RESPAWN_MIN_DISTANCE:
             continue    #TRY AGAIN NEXT FRAME, WHEN THE PLAYER HAS MOVED AWAY
         respawn_times.remove(due)
@@ -354,12 +362,12 @@ def draw_wolf(screen, wolf_data, offset=(0, 0)):
     screen.blit(image, sprite_rect)
 
     #HEALTH BAR ONCE THE WOLF HAS BEEN HIT
-    if wolf_data["health"] < WOLF_MAX_HEALTH:
+    if wolf_data["health"] < wolf_data["max_health"]:
         bar = pygame.Rect(0, 0, 36, 5)
         bar.midbottom = (wolf.centerx, sprite_rect.top + 4)
         pygame.draw.rect(screen, (40, 20, 20), bar)
         filled = bar.copy()
-        filled.width = int(bar.width * wolf_data["health"] / WOLF_MAX_HEALTH)
+        filled.width = int(bar.width * wolf_data["health"] / wolf_data["max_health"])
         pygame.draw.rect(screen, (220, 60, 60), filled)
 
 

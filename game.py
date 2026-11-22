@@ -13,6 +13,10 @@ import game_over as game_over_screen
 import wolves
 import weather
 import menu
+import ai_agent
+import os
+import game_clock
+import difficulty
 
 pygame.init()
 
@@ -33,8 +37,8 @@ player_module.load_player_frames()
 hud.load_assets()
 wolves.load_wolf_frames()
 
-#IN-GAME TIME
-start_time = pygame.time.get_ticks()
+#IN-GAME TIME (GAME CLOCK, SO AI MODE CAN FAST-FORWARD)
+start_time = game_clock.now()
 day = 1
 days_survived = 0
 previous_elapsed_time = 0
@@ -50,12 +54,31 @@ player_direction = "down"
 player_is_moving = False
 player_speed = 5
 
+#GAME MODE: False = YOU PLAY, True = THE AI PLAYS
+ai_mode = False
+ai = None
+run_logged = False
+
+#AI MODE FAST-FORWARD: HOW MANY GAME STEPS TO RUN FOR EACH FRAME DRAWN (KEYS 1-4)
+SPEEDS = {pygame.K_1: 1, pygame.K_2: 2, pygame.K_3: 4, pygame.K_4: 8}
+sim_speed = 1
+
 #RESTART GAME
-def restart_game():
+def restart_game(mode=None):
     global player, day, days_survived
     global game_over, is_night
     global start_time, previous_elapsed_time
     global wolf_list
+    global ai_mode, ai, run_logged
+
+    #"play" = YOU PLAY, "ai" = WATCH THE AI SURVIVE, None = KEEP THE SAME MODE
+    if mode is not None:
+        ai_mode = mode == "ai"
+    if ai_mode:
+        if ai is None:
+            ai = ai_agent.Agent()
+        ai.reset()
+    run_logged = False
 
     #RESET SURVIVAL STATS
     survival.reset_survival()
@@ -75,7 +98,7 @@ def restart_game():
     is_night = False
 
     #RESET DAY/NIGHT TIMER
-    start_time = pygame.time.get_ticks()
+    start_time = game_clock.now()
     previous_elapsed_time = 0
 
     #RESET WOLVES
@@ -84,11 +107,145 @@ def restart_game():
     #RESET WEATHER
     weather.reset()
 
+    #DAY 1 DIFFICULTY
+    difficulty.apply(1)
+
+def log_ai_run():
+    #SAVE EACH AI RUN (USEFUL FOR COMPARING VERSIONS OF THE AI, AND FOR MACHINE LEARNING LATER)
+    new_file = not os.path.exists("ai_runs.csv")
+    with open("ai_runs.csv", "a") as f:
+        if new_file:
+            f.write("days_survived,wolves_defeated,decisions\n")
+        f.write(f"{days_survived},{wolves.wolves_defeated},{ai.decisions}\n")
+
+
+def open_menu():
+    #SHOW THE MAIN MENU; RETURNS FALSE IF THE PLAYER CHOSE QUIT
+    choice = menu.run(screen, clock)
+    if choice == "quit":
+        return False
+    restart_game(choice)
+    return True
+
+
 #SHOW THE MAIN MENU FIRST
-if menu.run(screen, clock) == "quit":
+if not open_menu():
     running = False
-else:
-    restart_game()
+
+def update_game(dt):
+    #ONE STEP OF THE GAME (EVERYTHING EXCEPT DRAWING). IN AI MODE THIS CAN RUN SEVERAL
+    #TIMES PER FRAME TO FAST-FORWARD.
+    global day, days_survived, game_over, is_night, previous_elapsed_time
+    global player, player_direction, player_is_moving
+
+    game_clock.advance(dt)
+
+    #UPDATE DAY/NIGHT CYCLE
+    (
+        elapsed_time,
+        is_night,
+        day,
+        previous_elapsed_time,
+        day_changed
+    ) = time_system.update_day_cycle(
+        start_time,
+        previous_elapsed_time,
+        day
+    )
+
+    #HANDLE NEW DAY: THE WILDERNESS GETS HARSHER
+    if day_changed:
+        days_survived = day - 1
+        difficulty.apply(day)
+        messages.show_message(f"Day {day}: it gets harsher ({difficulty.describe(day)})", 3500)
+
+    #INPUT: FROM THE AI, OR FROM THE KEYBOARD
+    dx = 0
+    dy = 0
+    if ai_mode:
+        #THE AI DECIDES WHAT TO "PRESS" THIS STEP
+        controls = ai.update(player, player_direction, wolf_list)
+        dx, dy = controls.dx, controls.dy
+        for action in controls.actions:
+            if action == "interact":
+                interactions.interact_with_world(player)
+            elif action == "campfire":
+                interactions.craft_campfire(player)
+            elif action == "tent":
+                interactions.craft_tent(player)
+            elif action == "attack":
+                if wolves.player_attack(wolf_list, player, player_direction, survival):
+                    player_module.start_attack()
+    else:
+        keys = pygame.key.get_pressed()
+
+        if keys[pygame.K_LEFT]:
+            dx = -player_speed
+
+        if keys[pygame.K_RIGHT]:
+            dx = player_speed
+
+        if keys[pygame.K_UP]:
+            dy = -player_speed
+
+        if keys[pygame.K_DOWN]:
+            dy = player_speed
+
+    #SLOW DOWN ON MUD AND TALL GRASS, IN THE RAIN, AND WHEN EXHAUSTED (BOTH MODES)
+    speed_factor = world.speed_multiplier(player) * weather.player_speed_factor()
+    dx = round(dx * speed_factor)
+    dy = round(dy * speed_factor)
+
+    if dx < 0:
+        player_direction = "left"
+    elif dx > 0:
+        player_direction = "right"
+    elif dy < 0:
+        player_direction = "up"
+    elif dy > 0:
+        player_direction = "down"
+
+    #MOVE THE PLAYER
+    previous_x = player.x
+    previous_y = player.y
+
+    player = player_module.move_player(
+        player,
+        dx,
+        dy,
+        world.obstacles,
+        WORLD_WIDTH,
+        WORLD_HEIGHT
+    )
+
+    #CHECK WHETHER THE PLAYER ACTUALLY MOVED
+    player_is_moving = (
+        player.x != previous_x or
+        player.y != previous_y
+    )
+
+    #MOVE THE WOLVES
+    wolves.move_wolves(wolf_list, WORLD_WIDTH, WORLD_HEIGHT, player, world.obstacles)
+
+    #WOLF ATTACK
+    wolves.attack_player(wolf_list, player, survival, messages)
+
+    #NIGHTFALL, RAIN AND COLD
+    weather.update(dt, elapsed_time, is_night, player)
+
+    #HUNGER AND THIRST RISE STEADILY; HEALTH SLOWLY COMES BACK WHEN FED, HYDRATED AND RESTED
+    survival.drain_needs(dt, CYCLE_DURATION)
+    survival.regenerate(dt, weather.player_near_fire or weather.player_sheltered)
+
+    #TREES, ROCKS AND BUSHES GROW BACK, DEFEATED WOLVES ARE REPLACED
+    world.update(game_clock.now())
+    wolves.update_respawns(wolf_list, player)
+
+    survival.check_death()
+    if not survival.is_alive:
+        game_over = True
+        days_survived = day - 1
+
 
 #GAME LOOP
 while running:
@@ -105,10 +262,16 @@ while running:
                     running = False
                 elif event.key == pygame.K_m:
                     #BACK TO THE MAIN MENU
-                    if menu.run(screen, clock) == "quit":
+                    if not open_menu():
                         running = False
-                    else:
-                        restart_game()
+            elif event.key == pygame.K_ESCAPE:
+                #BACK TO THE MAIN MENU DURING A GAME
+                if not open_menu():
+                    running = False
+            elif ai_mode:
+                #THE AI IS IN CONTROL. KEYS 1-4 CHANGE THE SPEED (1x, 2x, 4x, 8x)
+                if event.key in SPEEDS:
+                    sim_speed = SPEEDS[event.key]
             elif survival.is_alive:
                 if event.key == pygame.K_e:
                      interactions.interact_with_world(player)
@@ -120,123 +283,33 @@ while running:
                     #SWING AT WHATEVER IS IN FRONT OF THE PLAYER
                     if wolves.player_attack(wolf_list, player, player_direction, survival):
                         player_module.start_attack()
-            
 
-    #UPDATE DAY/NIGHT CYCLE
-    if not game_over:
-        (
-            elapsed_time,
-            is_night,
-            day,
-            previous_elapsed_time,
-            day_changed
-        ) = time_system.update_day_cycle(
-            start_time,
-            previous_elapsed_time,
-            day
-        )
+    dt = min(clock.tick(60), 50)     #CAP dt SO A SLOW FRAME DOESN'T JUMP TOO FAR
 
-        #HANDLE NEW DAY
-        if day_changed:
-            survival.end_day()
-            days_survived = day - 1
+    #RUN THE GAME (SEVERAL STEPS PER FRAME WHEN THE AI IS FAST-FORWARDING)
+    steps = sim_speed if ai_mode else 1
+    for _ in range(steps):
+        if game_over or not running:
+            break
+        update_game(dt)
 
-            if not survival.is_alive:
-                game_over = True
-                is_night = False
-            else:
-                messages.show_message(f"Day {day} begins!")
-
-                                
-    #CHECK KEYBOARD INPUT
-    dx = 0
-    dy = 0
-    dt = clock.tick(60)
-    
-
-    if not game_over:
-        keys = pygame.key.get_pressed()
-
-        if keys[pygame.K_LEFT]:
-            dx = -player_speed
-
-        if keys[pygame.K_RIGHT]:
-            dx = player_speed
-
-        if keys[pygame.K_UP]:
-            dy = -player_speed
-
-        if keys[pygame.K_DOWN]:
-            dy = player_speed
-
-        #SLOW DOWN ON MUD AND TALL GRASS, IN THE RAIN, AND WHEN EXHAUSTED
-        speed_factor = world.speed_multiplier(player) * weather.player_speed_factor()
-        dx = round(dx * speed_factor)
-        dy = round(dy * speed_factor)
-
-        if dx < 0:
-            player_direction = "left"
-        elif dx > 0:
-            player_direction = "right"
-        elif dy < 0:
-            player_direction = "up"
-        elif dy > 0: 
-            player_direction = "down"
-
-    #MOVE THE PLAYER
-    if not game_over:
-        #REMEMBER THE PLAYER'S PREVIOUS POSITION
-        previous_x = player.x
-        previous_y = player.y
-
-        player = player_module.move_player(
-            player,
-            dx,
-            dy, 
-            world.obstacles,
-            WORLD_WIDTH,
-            WORLD_HEIGHT
-        )
-
-        #CHECK WHETHER THE PLAYER ACTUALLY MOVED
-        player_is_moving = (
-            player.x != previous_x or
-            player.y != previous_y
-        )
-
-        #MOVE THE WOLVES
-        wolves.move_wolves(wolf_list, WORLD_WIDTH, WORLD_HEIGHT, player, world.obstacles)
-
-        #WOLF ATTACK
-        wolves.attack_player(wolf_list, player, survival, messages)
-
-        #NIGHTFALL, RAIN AND COLD
-        weather.update(dt, elapsed_time, is_night, player)
-
-        #HEALTH SLOWLY COMES BACK WHEN FED, HYDRATED AND RESTED
-        survival.regenerate(dt, weather.player_near_fire or weather.player_sheltered)
-
-        #TREES AND ROCKS GROW BACK, DEFEATED WOLVES ARE REPLACED
-        world.update(pygame.time.get_ticks())
-        wolves.update_respawns(wolf_list, player)
-
-        if not survival.is_alive:
-            game_over = True
-            days_survived = day - 1
-    else:
+    if game_over:
         player_is_moving = False
 
     #UPDATE PLAYER ANIMATION
-    player_module.update_player_animation(player_is_moving, player_direction, dt)
+    player_module.update_player_animation(player_is_moving, player_direction, dt * steps)
 
-
-               
     #RENDER GAME
     if game_over:
+        if ai_mode and not run_logged:
+            log_ai_run()
+            run_logged = True
         screen.fill((20, 20, 20))
         game_over_screen.gameover(screen, font, days_survived, wolves.wolves_defeated)
         pygame.display.flip()
     else:
+        if ai_mode:
+            ai.sim_speed = sim_speed
         renderer.draw_frame(
             screen,
             font,
@@ -245,7 +318,8 @@ while running:
             player_direction,
             is_night,
             night_overlay,
-            wolf_list
+            wolf_list,
+            ai if ai_mode else None
         )
 
 pygame.quit()

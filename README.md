@@ -7,8 +7,9 @@ The player must survive in a wilderness environment by collecting resources, man
 ## 🎮 Current Features
 
 - **Player movement:** Explore the environment using keyboard controls.
-- **Resource collection:** Gather wood, stone, wild berries, and water. Harvested trees and rocks grow back after a while.
-- **Main menu:** Start the game, read how to play, or quit (keyboard or mouse).
+- **Resource collection:** Gather wood, stone, wild berries, and water. Harvested trees and rocks grow back after a while; each berry bush can be eaten from 3 times, then needs to grow back.
+- **Growing difficulty:** Every day the wilderness gets harsher (`difficulty.py`): more and tougher wolves, faster hunger and thirst, slower healing and regrowth, and more frequent, harsher bad weather. Every run eventually ends, so days survived is a real score.
+- **Main menu:** Play yourself, watch the AI survive, read how to play, or quit (keyboard or mouse). Esc returns to the menu.
 - **Survival system:** Manage health, hunger, thirst, and energy.
 - **Healing:** Health slowly comes back (+1 every 3 s) while Food and Water are above half, energy isn't empty, and you haven't been bitten for 5 s. Twice as fast by a campfire or in a tent.
 - **Crafting:** Collect resources to craft a campfire.
@@ -23,7 +24,7 @@ The player must survive in a wilderness environment by collecting resources, man
 - **Heavy rain:** Reduces visibility, slows movement, drains energy and puts out campfires; build a tent for shelter.
 - **Cold snaps:** Drain energy over time; stand near a campfire to warm up.
 - **Weather warnings:** The game warns the player before night, rain or cold arrives.
-- **Survival progression:** Hunger and thirst increase as each day passes.
+- **Survival progression:** Hunger and thirst rise steadily; at 100 the player starts losing health.
 - **Game over system:** The game ends when the player's health reaches zero.
 
 ## 🕹️ Controls
@@ -36,6 +37,7 @@ The player must survive in a wilderness environment by collecting resources, man
 | C | Craft a campfire (3 wood, 2 stone) |
 | T | Build a tent (4 wood) |
 | R / M / Q | Restart / main menu / quit on the game over screen |
+| 1 / 2 / 3 / 4 | AI mode only: speed x1 / x2 / x4 / x8 |
 
 ## 🛠️ Technologies
 
@@ -81,17 +83,29 @@ The player must survive in a wilderness environment by collecting resources, man
    python game.py
    ```
 
-## 🧠 AI Concepts (Planned)
+## 🧠 AI Concepts
 
-The project aims to incorporate concepts from the Artificial Intelligence course:
+| Concept | Status | Where |
+|---|---|---|
+| **Search Algorithms** | ✅ Implemented | Wolves chase with **A\*** (Manhattan heuristic) over a terrain-cost grid (`search.py`); BFS kept for comparison. The AI survivor also uses A\* to walk to its targets. |
+| **Markov Decision Process (MDP)** | ✅ Implemented | `mdp.py`: the AI survivor's brain. Abstract states (health, food, water, energy, wood, stone, time/weather, wolf nearby, shelter), 9 macro-actions, a probabilistic transition model calibrated from the game's numbers, rewards for surviving, and **value iteration** to find the best policy. |
+| **Hidden Markov Models (HMM)** | Planned | Reasoning about things the AI can't see directly. |
+| **Game Theory** | Planned | Decision-making in wolf encounters. |
+| **Machine Learning** | Planned | Learning from past AI runs (`ai_runs.csv`). |
 
-- **Search Algorithms:** Wolves use A* search (Manhattan heuristic) over a terrain-cost grid; BFS is kept for comparison. *(Implemented)*
-- **Game Theory:** Decision-making in dangerous situations.
-- **Hidden Markov Models (HMM):** Reasoning about hidden environmental conditions.
-- **Markov Decision Processes (MDP):** Choosing actions to maximize survival.
-- **Machine Learning Basics:** Exploring simple learning-based decision-making.
+### 🤖 AI mode ("Watch AI Survive")
 
-These AI components are planned for future development.
+Choose **Watch AI Survive** in the main menu to let the AI play. Every frame it:
+
+1. **Observes** the game and converts it into an abstract MDP state.
+2. **Decides** using the policy solved by value iteration (if the best action isn't possible right now, it takes the next-best by Q-value).
+3. **Acts** with the same controls as a human: it plans a route with A\* and presses E / C / T / Space.
+
+A panel shows what the AI is doing, why, the state it sees, and its top choices with their Q-values. Press 1-4 to fast-forward (x1, x2, x4, x8). Each AI run is logged to `ai_runs.csv`.
+
+With the growing difficulty, the MDP agent currently survives around **9-11 days** in testing.
+
+To change the MDP (e.g. rewards or probabilities), edit `mdp.py` and run `python mdp.py` to solve it again; the policy is saved to `mdp_policy.json`.
 
 ## 📌 Project Status
 

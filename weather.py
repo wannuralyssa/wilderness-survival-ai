@@ -47,6 +47,7 @@ ENERGY_GAIN_TENT = 0.4          #RESTING IN A TENT
 HEALTH_DRAIN_EXHAUSTED = 0.5    #HEALTH LOST PER SECOND WHEN ENERGY IS 0
 
 CAMPFIRE_WARMTH_RADIUS = 100
+DIFFICULTY_DRAIN = 1.0          #difficulty.py MAKES BAD WEATHER DRAIN MORE ON LATER DAYS
 
 #WOLF DETECTION RANGE (PIXELS)
 WOLF_RANGE_DAY = 180
@@ -189,12 +190,13 @@ def _update_survival(dt, player_rect):
     if player_near_fire:
         energy_rate = ENERGY_GAIN_FIRE
     elif player_sheltered:
-        energy_rate = -ENERGY_DRAIN_COLD_TENT if current == COLD else ENERGY_GAIN_TENT
+        energy_rate = -ENERGY_DRAIN_COLD_TENT * DIFFICULTY_DRAIN if current == COLD else ENERGY_GAIN_TENT
     else:
         energy_rate = 0.0
         energy_rate -= ENERGY_DRAIN_NIGHT * night_amount
         energy_rate -= ENERGY_DRAIN_RAIN * rain_amount
         energy_rate -= ENERGY_DRAIN_COLD * cold_amount
+        energy_rate *= DIFFICULTY_DRAIN
 
     #STATS ARE WHOLE NUMBERS, SO COLLECT SMALL CHANGES UNTIL THEY ADD UP TO 1
     _energy_buffer += energy_rate * seconds

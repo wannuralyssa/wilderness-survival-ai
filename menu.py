@@ -5,14 +5,15 @@ import pygame
 from config import *
 import world
 
-OPTIONS = ["Start Game", "How to Play", "Quit"]
+OPTIONS = ["Play", "Watch AI Survive", "How to Play", "Quit"]
 
 CONTROLS = [
     ("Arrow keys", "Move"),
     ("E", "Collect, drink, eat, rest, relight a fire"),
     ("Space", "Attack a wolf in front of you"),
     ("C", "Build a campfire (3 wood, 2 stone)"),
-    ("T", "Build a tent (4 wood)")
+    ("T", "Build a tent (4 wood)"),
+    ("Esc", "Back to the main menu")
 ]
 
 TIPS = [
@@ -20,7 +21,8 @@ TIPS = [
     "Keep Food and Water above half and your health slowly heals.",
     "Rain puts out campfires: shelter in a tent.",
     "Cold drains energy: stand by a campfire to warm up.",
-    "Wolves hunt from further away at night."
+    "Wolves hunt from further away at night.",
+    "Watch AI Survive: an AI plans with an MDP + A* search. Esc = menu."
 ]
 
 GOLD = (250, 204, 96)
@@ -58,8 +60,8 @@ def _centered_text(screen, text, font, color, center, shadow=True):
 def _button_rects():
     rects = []
     for i in range(len(OPTIONS)):
-        rect = pygame.Rect(0, 0, 280, 50)
-        rect.center = (WIDTH // 2, 320 + i * 66)
+        rect = pygame.Rect(0, 0, 280, 48)
+        rect.center = (WIDTH // 2, 300 + i * 60)
         rects.append(rect)
     return rects
 
@@ -100,7 +102,7 @@ def _draw_main(screen, selected, now):
 
 
 def _draw_help(screen):
-    panel = pygame.Rect(0, 0, 600, 430)
+    panel = pygame.Rect(0, 0, 640, 490)
     panel.center = (WIDTH // 2, HEIGHT // 2)
     _panel(screen, panel, (18, 22, 28, 225), (250, 204, 96, 160))
 
@@ -163,8 +165,10 @@ def run(screen, clock):
                         choice = i
 
             if choice is not None:
-                if OPTIONS[choice] == "Start Game":
-                    return "start"
+                if OPTIONS[choice] == "Play":
+                    return "play"
+                if OPTIONS[choice] == "Watch AI Survive":
+                    return "ai"
                 if OPTIONS[choice] == "How to Play":
                     showing_help = True
                 if OPTIONS[choice] == "Quit":
