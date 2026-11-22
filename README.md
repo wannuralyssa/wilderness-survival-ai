@@ -56,7 +56,7 @@ The player must survive in a wilderness environment by collecting resources, man
 1. Clone this repository:
 
    ```bash
-   git clone YOUR_GITHUB_REPOSITORY_URL
+   git clone (https://github.com/wannuralyssa/wilderness-survival-ai.git)
    ```
 
 2. Navigate into the project folder:
