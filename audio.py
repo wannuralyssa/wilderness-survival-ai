@@ -133,7 +133,7 @@ def update_world(weather, world, player_rect, game_over):
         return
     play_music("music_night" if weather.night_amount > 0.5 else "music_day")
     set_loop("loop_rain", weather.rain_amount)
-    set_loop("loop_wind", weather.cold_amount)
+    set_loop("loop_wind", max(weather.cold_amount, 0.5 * weather.wind_amount))
 
     #CAMPFIRE CRACKLE GETS LOUDER AS YOU GET CLOSER TO A BURNING FIRE
     closest = min((math.hypot(f.centerx - player_rect.centerx, f.centery - player_rect.centery)

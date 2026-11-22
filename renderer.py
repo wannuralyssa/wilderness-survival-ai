@@ -9,6 +9,8 @@ import player as player_module
 import wolves
 import weather
 import ai_agent
+import tent_art
+import game_clock
 
 #THE CAMERA IS THE PART OF THE WORLD SHOWN ON SCREEN
 camera = pygame.Rect(0, 0, WIDTH, HEIGHT)
@@ -29,6 +31,14 @@ def draw_frame(screen, font, day, player_rect, player_direction, is_night, night
     update_camera(player_rect)
     offset = camera.topleft
 
+    #RESTING IN A TENT: THE TENT CLOSES UP AND GLOWS, AND THE PLAYER IS SHOWN INSIDE IT
+    world.occupied_tent = None
+    if not player_module.is_walking:
+        for tent in world.tents:
+            if tent.collidepoint(player_rect.center):
+                world.occupied_tent = tent
+                break
+
     #DRAW FLAT GROUND (GRASS, PLATEAUS, WATER, CAMPFIRES)
     world.draw_ground(screen, camera)
 
@@ -45,10 +55,21 @@ def draw_frame(screen, font, day, player_rect, player_direction, is_night, night
             lambda wolf_data=wolf_data: wolves.draw_wolf(screen, wolf_data, offset)
         ))
 
-    drawables.append((
-        player_rect.bottom,
-        lambda: player_module.draw_player(screen, player_rect, player_direction, offset)
-    ))
+    if world.occupied_tent is not None:
+        tent = world.occupied_tent
+        image_rect = pygame.Rect((0, 0), tent_art.SIZE)
+        image_rect.midbottom = (tent.centerx - offset[0], tent.bottom - offset[1])
+        resting = (survival.energy < 100 or survival.health < 100) and weather.current != weather.COLD
+        drawables.append((
+            tent.bottom,
+            lambda: tent_art.draw_occupied(screen, image_rect.topleft, player_module.player_frames["down"][0],
+                                           game_clock.now(), resting, weather.rain_amount > 0.3)
+        ))
+    else:
+        drawables.append((
+            player_rect.bottom,
+            lambda: player_module.draw_player(screen, player_rect, player_direction, offset)
+        ))
 
     #DRAW FROM TOP OF THE WORLD TO BOTTOM, SO WHATEVER IS IN FRONT COVERS WHAT IS BEHIND
     drawables.sort(key=lambda item: item[0])

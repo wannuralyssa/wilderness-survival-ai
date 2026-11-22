@@ -22,7 +22,7 @@ import survival_system as survival
 import wolves as wolves_module
 
 CELL = world.CELL_SIZE
-PLAYER_SPEED = 5
+PLAYER_SPEED = 3.5            #SAME AS player_speed IN game.py
 DECISION_INTERVAL = 3000        #RE-CHECK THE DECISION EVERY 3 SECONDS
 STUCK_FRAMES = 45               #NO PROGRESS FOR THIS MANY FRAMES = STUCK, PLAN AGAIN
 TASK_TIMEOUT = 15000            #GIVE UP ON A TASK AFTER 15 SECONDS
@@ -169,6 +169,8 @@ class Agent:
             self.task = new_task(action, now)
             self.last_reason = ("best action (MDP policy)" if rank == 0
                                 else f"best possible ({rank} higher not possible now)")
+            if weather.current == weather.CLEAR and self.state[6] in (mdp.RAIN, mdp.COLD):
+                self.last_reason += " - HMM forecast"
             self.task["q"] = q
             return
 
@@ -451,7 +453,7 @@ def rest_task(agent, task, player_rect, controls, now):
     if task["phase"] == "rest":
         #STAY PUT; THE AGENT DECIDES AGAIN EVERY FEW SECONDS WHETHER TO KEEP RESTING
         if survival.energy >= 95 and survival.health >= 95 and weather.current == weather.CLEAR \
-                and weather.night_amount < 0.5:
+                and weather.night_amount < 0.5 and mdp.forecast_context(weather) is None:
             task["done"] = True
 
 
@@ -565,7 +567,10 @@ def draw_overlay(screen, agent, camera, player_rect):
         y += 22
         line1 = f"health {mdp.HEALTH_LEVELS[s[0]]}, food {mdp.FOOD_LEVELS[s[1]]}, water {mdp.WATER_LEVELS[s[2]]}"
         line2 = f"energy {mdp.ENERGY_LEVELS[s[3]]}, wood {mdp.WOOD_LEVELS[s[4]]}, stone {mdp.STONE_LEVELS[s[5]]}"
-        line3 = (f"{mdp.CONTEXTS[s[6]]}, wolf: {'yes' if s[7] else 'no'}, "
+        context = mdp.CONTEXTS[s[6]]
+        if weather.current == weather.CLEAR and s[6] in (mdp.RAIN, mdp.COLD):
+            context += " soon"      #THE HMM FORECAST, NOT THE WEATHER YET
+        line3 = (f"{context}, wolf: {'yes' if s[7] else 'no'}, "
                  f"shelter: {mdp.SHELTER_LEVELS[s[8]]}")
         for line in (line1, line2, line3):
             screen.blit(_fonts["small"].render(line, True, (170, 210, 255)), (x, y))

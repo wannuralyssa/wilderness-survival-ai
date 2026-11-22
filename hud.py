@@ -1,6 +1,7 @@
 
 import math
 import pygame
+import hmm
 from config import *
 
 #COLOURS
@@ -22,6 +23,12 @@ LOW_STAT = 25           #BARS BELOW THIS FLASH AS A WARNING
 
 icons = {}
 fonts = {}
+show_hmm = False        #H SHOWS / HIDES THE WEATHER FORECAST PANEL
+
+#COLOUR OF EACH HIDDEN STATE AND EACH SIGN IN THE HMM PANEL
+STATE_COLOURS = [(250, 210, 90), (120, 140, 200), (70, 120, 235), (170, 220, 240), (235, 245, 255)]
+PANEL_NAMES = ["Clear", "Storm front", "Rain", "Cold front", "Cold snap"]
+SIGN_COLOURS = [(250, 210, 90), (150, 155, 170), (150, 220, 170), (70, 120, 235), (235, 245, 255)]
 
 
 def load_assets():
@@ -65,6 +72,44 @@ def _bar(screen, rect, fraction, color):
             shine = pygame.Rect(filled.x + 3, filled.y + 2, filled.width - 6, 2)
             light = tuple(min(255, c + 60) for c in color)
             pygame.draw.rect(screen, light, shine, border_radius=1)
+
+
+def draw_hmm_panel(screen, weather, rect):
+    #WHAT THE HMM BELIEVES ABOUT THE HIDDEN WEATHER, FROM THE SIGNS IT HAS SEEN
+    _panel(screen, rect)
+    fc = weather.forecast
+    x, y = rect.x + 10, rect.y + 8
+    _text(screen, "Sky reading (HMM)", (x, y), "bold", (255, 214, 120))
+    y += 22
+
+    #FILTERED BELIEF: P(HIDDEN STATE NOW | ALL SIGNS SO FAR)
+    for i, name in enumerate(PANEL_NAMES):
+        p = fc.belief[i]
+        _text(screen, name, (x, y), "small", TEXT if p >= 0.5 else TEXT_DIM)
+        _text(screen, f"{p:.0%}", (rect.right - 10, y), "small", TEXT_DIM, align="right")
+        _bar(screen, pygame.Rect(x + 78, y + 5, rect.width - 134, 6), p, STATE_COLOURS[i])
+        y += 17
+
+    #THE LAST SIGNS SEEN, AND THE MOST LIKELY HIDDEN STATES BEHIND THEM (VITERBI)
+    y += 4
+    _text(screen, "Signs", (x, y), "small", TEXT_DIM)
+    path = fc.viterbi_path()
+    cell = 10
+    start = rect.right - 10 - cell * len(fc.signs)
+    for k, sign in enumerate(fc.signs):
+        pygame.draw.rect(screen, SIGN_COLOURS[sign], (start + k * cell, y + 3, cell - 2, 10), border_radius=2)
+    y += 17
+    _text(screen, "Viterbi", (x, y), "small", TEXT_DIM)
+    for k, state in enumerate(path):
+        pygame.draw.rect(screen, STATE_COLOURS[state], (start + k * cell, y + 3, cell - 2, 10), border_radius=2)
+    y += 20
+
+    #PREDICTION: CHANCE OF RAIN / COLD IN THE NEXT 30 SECONDS
+    seconds = hmm.FORECAST_TICKS * hmm.TICK // 1000
+    _text(screen, f"Chance in the next {seconds} s", (x, y), "small", TEXT_DIM)
+    y += 17
+    _text(screen, f"Rain {fc.rain_soon:.0%}", (x, y), "bold", (140, 180, 255))
+    _text(screen, f"Cold {fc.cold_soon:.0%}", (x + 86, y), "bold", (200, 235, 255))
 
 
 def draw_hud(screen, day, wood, stone, survival, weather, wolves_defeated):
@@ -137,9 +182,20 @@ def draw_hud(screen, day, wood, stone, survival, weather, wolves_defeated):
     icon = {"rain": "rain", "cold": "cold"}.get(weather.current, "clear")
     screen.blit(icons[icon], (right.x + 10, right.y + 54))
     _text(screen, weather.WEATHER_NAMES[weather.current], (right.x + 42, right.y + 52), "bold")
-    if weather.upcoming and weather.upcoming != weather.current:
-        _text(screen, f"{weather.WEATHER_NAMES[weather.upcoming]} soon", (right.x + 42, right.y + 68),
-              "small", (255, 210, 120))
+    #FORECAST FROM THE HMM (hmm.py): A CHANCE, WORKED OUT ONLY FROM THE SIGNS IN THE SKY
+    fc = weather.forecast
+    if weather.current == weather.CLEAR:
+        name, chance = max((("Rain", fc.rain_soon), ("Cold", fc.cold_soon)), key=lambda item: item[1])
+        if chance >= 0.2:
+            warm = min(1.0, chance / 0.7)
+            colour = (255, int(230 - 60 * warm), int(150 - 70 * warm))
+            _text(screen, f"{name} {chance:.0%} soon", (right.x + 42, right.y + 68), "small", colour)
+        else:
+            _text(screen, f"Sky: {hmm.OBSERVATION_NAMES[weather.sky_sign]}", (right.x + 42, right.y + 68),
+                  "small", TEXT_DIM)
+
+    if show_hmm:
+        draw_hmm_panel(screen, weather, pygame.Rect(WIDTH - 196, right.bottom + 8, 186, 204))
 
     #RESOURCES
     x = right.x + 10

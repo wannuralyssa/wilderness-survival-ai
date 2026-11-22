@@ -2,11 +2,21 @@ import math
 import pygame
 import game_clock
 
-ANIMATION_SPEED = 150          #MILLISECONDS PER WALK FRAME
+ANIMATION_SPEED = 160          #MILLISECONDS PER WALK FRAME
 SPRITE_SIZE = (48, 64)         #ON-SCREEN SIZE OF THE CHARACTER
 DIRECTIONS = ["down", "left", "right", "up"]
 IDLE_FRAME = 0
-WALK_FRAMES = [1, 2, 3]
+
+#WALK CYCLES. THE SIDE VIEWS STEP, BRING THE LEGS TOGETHER (FRAME 0), THEN STEP WITH THE
+#OTHER LEG (FRAMES 4 AND 5 ARE THE SAME STRIDE WITH THE NEAR AND FAR LEG SWAPPED IN SHADE)
+WALK_CYCLES = {
+    "down": [1, 2, 3, 2],
+    "up": [1, 2, 3, 2],
+    "left": [4, 0, 5, 0],
+    "right": [4, 0, 5, 0]
+}
+#FRAMES WHERE THE LEGS PASS EACH OTHER ARE DRAWN A LITTLE HIGHER: THE BODY BOBS AS YOU WALK
+PASSING_BOB = 2
 
 player_frames = {
     "down": [],
@@ -18,6 +28,7 @@ player_frames = {
 current_frame = IDLE_FRAME
 walk_index = 0
 animation_timer = 0
+is_walking = False
 
 #ATTACK SWING EFFECT
 ATTACK_EFFECT_TIME = 160      #MILLISECONDS THE SWING IS VISIBLE
@@ -41,7 +52,8 @@ def load_player_frames():
     #CALL THIS AFTER pygame.display.set_mode()
     for direction in DIRECTIONS:
         player_frames[direction] = []
-        for i in range(4):
+        count = 6 if direction in ("left", "right") else 4
+        for i in range(count):
             image = pygame.image.load(
                 f"assets/player/frames/player_{direction}_{i}.png"
             ).convert_alpha()
@@ -96,16 +108,17 @@ def _try_move(player, dx, dy, obstacles, width, height):
 
 
 def update_player_animation(is_moving, direction, dt):
-    global current_frame, walk_index, animation_timer
+    global current_frame, walk_index, animation_timer, is_walking
 
+    is_walking = is_moving
     if is_moving:
         animation_timer += dt
 
-        if animation_timer >= ANIMATION_SPEED:
+        while animation_timer >= ANIMATION_SPEED:
             animation_timer -= ANIMATION_SPEED
-            walk_index = (walk_index + 1) % len(WALK_FRAMES)
+            walk_index = (walk_index + 1) % 4
 
-        current_frame = WALK_FRAMES[walk_index]
+        current_frame = WALK_CYCLES[direction][walk_index]
     else:
         current_frame = IDLE_FRAME
         walk_index = 0
@@ -124,8 +137,10 @@ def draw_player(screen, player_rect, direction="down", offset=(0, 0)):
     )
 
     #SPRITE: FEET ON THE BOTTOM OF THE COLLISION BOX
-    image = player_frames[direction][current_frame]
-    sprite_rect = image.get_rect(midbottom=(player_rect.centerx, player_rect.bottom + 2))
+    frame = current_frame if current_frame < len(player_frames[direction]) else IDLE_FRAME
+    image = player_frames[direction][frame]
+    bob = -PASSING_BOB if is_walking and walk_index % 2 == 1 else 0
+    sprite_rect = image.get_rect(midbottom=(player_rect.centerx, player_rect.bottom + 2 + bob))
     screen.blit(image, sprite_rect)
 
     #SWING EFFECT: A WHITE ARC SWEEPING ACROSS THE FRONT OF THE PLAYER

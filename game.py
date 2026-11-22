@@ -28,7 +28,9 @@ is_night = False
 clock = pygame.time.Clock()
 font = pygame.font.SysFont("Arial", 17)
 
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+#SCALED: THE GAME IS ALWAYS DRAWN AT 800 x 600 AND STRETCHED (KEEPING ITS SHAPE) TO FILL
+#THE WINDOW, SO IT CAN BE RESIZED OR MADE FULL SCREEN (F11) WITHOUT CHANGING ANY GAME CODE
+screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED | pygame.RESIZABLE)
 pygame.display.set_caption("Wilderness Survival AI Simulator")
 
 #LOAD GAME ASSETS
@@ -54,7 +56,21 @@ player = player_module.create_player(*world.PLAYER_START)
 wolf_list = wolves.create_wolves()
 player_direction = "down"
 player_is_moving = False
-player_speed = 5
+player_speed = 3.5              #PIXELS PER FRAME (WAS 5)
+move_carry = [0.0, 0.0]         #LEFTOVER FRACTIONS OF A PIXEL, SO SPEEDS LIKE 3.5 WORK
+
+#ARROW KEYS OR WASD
+KEYS_LEFT = (pygame.K_LEFT, pygame.K_a)
+KEYS_RIGHT = (pygame.K_RIGHT, pygame.K_d)
+KEYS_UP = (pygame.K_UP, pygame.K_w)
+KEYS_DOWN = (pygame.K_DOWN, pygame.K_s)
+
+
+def toggle_fullscreen():
+    try:
+        pygame.display.toggle_fullscreen()
+    except pygame.error:
+        pass
 
 #GAME MODE: False = YOU PLAY, True = THE AI PLAYS
 ai_mode = False
@@ -64,6 +80,20 @@ run_logged = False
 #AI MODE FAST-FORWARD: HOW MANY GAME STEPS TO RUN FOR EACH FRAME DRAWN (KEYS 1-4)
 SPEEDS = {pygame.K_1: 1, pygame.K_2: 2, pygame.K_3: 4, pygame.K_4: 8}
 sim_speed = 1
+
+def whole_pixels(fx, fy):
+    #THE PLAYER'S RECT ONLY MOVES IN WHOLE PIXELS: KEEP THE LEFTOVER FRACTION FOR NEXT FRAME
+    if fx == 0:
+        move_carry[0] = 0.0
+    if fy == 0:
+        move_carry[1] = 0.0
+    move_carry[0] += fx
+    move_carry[1] += fy
+    dx, dy = int(move_carry[0]), int(move_carry[1])
+    move_carry[0] -= dx
+    move_carry[1] -= dy
+    return dx, dy
+
 
 #RESTART GAME
 def restart_game(mode=None):
@@ -76,6 +106,7 @@ def restart_game(mode=None):
     #"play" = YOU PLAY, "ai" = WATCH THE AI SURVIVE, None = KEEP THE SAME MODE
     if mode is not None:
         ai_mode = mode == "ai"
+        hud.show_hmm = ai_mode      #THE FORECAST PANEL STARTS OPEN WHEN WATCHING THE AI (H TOGGLES IT)
     if ai_mode:
         if ai is None:
             ai = ai_agent.Agent()
@@ -188,22 +219,21 @@ def update_game(dt):
     else:
         keys = pygame.key.get_pressed()
 
-        if keys[pygame.K_LEFT]:
+        if any(keys[k] for k in KEYS_LEFT):
             dx = -player_speed
 
-        if keys[pygame.K_RIGHT]:
+        if any(keys[k] for k in KEYS_RIGHT):
             dx = player_speed
 
-        if keys[pygame.K_UP]:
+        if any(keys[k] for k in KEYS_UP):
             dy = -player_speed
 
-        if keys[pygame.K_DOWN]:
+        if any(keys[k] for k in KEYS_DOWN):
             dy = player_speed
 
     #SLOW DOWN ON MUD AND TALL GRASS, IN THE RAIN, AND WHEN EXHAUSTED (BOTH MODES)
     speed_factor = world.speed_multiplier(player) * weather.player_speed_factor()
-    dx = round(dx * speed_factor)
-    dy = round(dy * speed_factor)
+    dx, dy = whole_pixels(dx * speed_factor, dy * speed_factor)
 
     if dx < 0:
         player_direction = "left"
@@ -269,6 +299,9 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
+            #FULL SCREEN ON / OFF (THE GAME IS SCALED UP, KEEPING ITS SHAPE)
+            toggle_fullscreen()
         elif event.type == pygame.KEYDOWN:
             if game_over:
                 if event.key == pygame.K_r:
@@ -279,6 +312,9 @@ while running:
                     #BACK TO THE MAIN MENU
                     if not open_menu():
                         running = False
+            elif event.key == pygame.K_h:
+                #SHOW / HIDE THE WEATHER FORECAST (HMM) PANEL
+                hud.show_hmm = not hud.show_hmm
             elif event.key == pygame.K_v:
                 #SOUND ON / OFF
                 audio.toggle_mute()

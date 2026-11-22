@@ -8,6 +8,7 @@ import survival_system as survival
 import messages
 import world
 import audio
+import hmm
 
 #WEATHER TYPES
 CLEAR = "clear"
@@ -20,21 +21,13 @@ WEATHER_NAMES = {
     COLD: "Cold Snap"
 }
 
-#HOW LONG EACH WEATHER LASTS (MILLISECONDS, MIN AND MAX)
-WEATHER_DURATION = {
-    CLEAR: (40000, 70000),
-    RAIN: (25000, 40000),
-    COLD: (30000, 45000)
+#THE WEATHER COMES FROM A HIDDEN MARKOV MODEL (SEE hmm.py): A HIDDEN "SKY STATE" CHANGES EVERY
+#TICK, AND THE SKY SHOWS A NOISY SIGN (SUNNY, CLOUDS, WIND). YOU ONLY SEE THE SIGNS.
+STATE_TO_WEATHER = {
+    hmm.CLEAR: CLEAR, hmm.STORM_FRONT: CLEAR, hmm.COLD_FRONT: CLEAR,
+    hmm.RAIN: RAIN, hmm.COLD: COLD
 }
-
-#CHANCE OF EACH WEATHER AFTER A CLEAR SPELL (RAIN AND COLD ARE ALWAYS FOLLOWED BY CLEAR)
-NEXT_WEATHER_CHANCE = {
-    CLEAR: 0.4,
-    RAIN: 0.3,
-    COLD: 0.3
-}
-
-WARNING_TIME = 8000         #WARN THE PLAYER THIS LONG BEFORE THE WEATHER CHANGES
+CALM_START = 45000          #THE FIRST 45 SECONDS OF A GAME ARE ALWAYS CALM
 NIGHT_WARNING_TIME = 8000   #WARN THE PLAYER THIS LONG BEFORE NIGHT
 FADE_TIME = 5000            #DUSK AND DAWN TAKE THIS LONG
 
@@ -65,9 +58,18 @@ DARK_COLOR = (8, 12, 35)
 
 #STATE
 current = CLEAR
-upcoming = None
-weather_timer = 0
+upcoming = None             #NO LONGER USED: NOBODY KNOWS THE FUTURE NOW (KEPT FOR OLD CODE)
+sky_state = hmm.CLEAR       #HIDDEN: THE TRUE STATE OF THE ATMOSPHERE
+sky_sign = hmm.SUNNY        #VISIBLE: WHAT THE SKY LOOKS LIKE RIGHT NOW
+tick_timer = 0
+calm_timer = 0
+forecast = hmm.WeatherFilter()   #THE HMM FILTER: WHAT YOU CAN WORK OUT FROM THE SIGNS
+rain_warned = False
+cold_warned = False
 night_warned = False
+
+cloud_amount = 0.0      #0..1, CLOUD SHADOWS DRIFTING OVER THE MAP
+wind_amount = 0.0       #0..1, LEAVES AND GUSTS BLOWING ACROSS
 
 night_amount = 0.0      #0 = FULL DAY, 1 = FULL NIGHT (SMOOTH)
 rain_amount = 0.0       #0..1, FADES IN AND OUT
@@ -86,17 +88,33 @@ _light_cache = {}
 _layers = {}
 rain_drops = []
 snow_flakes = []
+leaves = []
+cloud_drift = 0.0
+
+#CLOUD SHADOWS: (X, Y IN THE WORLD, SIZE). THEY DRIFT SLOWLY TO THE RIGHT
+CLOUDS = [(100, 150, 1.0), (700, 520, 1.3), (1250, 200, 0.9), (400, 950, 1.2), (1100, 820, 1.0),
+          (1500, 1050, 0.8)]
+LEAF_COLOURS = [(126, 168, 64), (170, 150, 60), (196, 120, 52), (100, 140, 60)]
 
 
 def reset():
-    global current, upcoming, weather_timer, night_warned
-    global night_amount, rain_amount, cold_amount, is_night_now
+    global current, upcoming, night_warned
+    global sky_state, sky_sign, tick_timer, calm_timer, rain_warned, cold_warned
+    global night_amount, rain_amount, cold_amount, is_night_now, cloud_amount, wind_amount
     global player_sheltered, player_near_fire
     global _energy_buffer, _health_buffer, _freeze_message_timer
 
     current = CLEAR
     upcoming = None
-    weather_timer = 45000       #THE FIRST DAY STARTS WITH CALM WEATHER
+    sky_state = hmm.CLEAR
+    sky_sign = hmm.SUNNY
+    tick_timer = hmm.TICK
+    calm_timer = CALM_START
+    forecast.reset()
+    rain_warned = False
+    cold_warned = False
+    cloud_amount = 0.0
+    wind_amount = 0.0
     night_warned = False
     night_amount = 0.0
     rain_amount = 0.0
@@ -109,6 +127,7 @@ def reset():
     _freeze_message_timer = 0
     rain_drops.clear()
     snow_flakes.clear()
+    leaves.clear()
 
 
 reset()
@@ -135,46 +154,62 @@ def _night_target(elapsed_time):
     return (CYCLE_DURATION - elapsed_time) / FADE_TIME
 
 
-def _pick_next_weather():
-    if current != CLEAR:
-        return CLEAR
-    options = list(NEXT_WEATHER_CHANCE.keys())
-    weights = list(NEXT_WEATHER_CHANCE.values())
-    return random.choices(options, weights=weights, k=1)[0]
+def _start_weather(previous):
+    #WHAT HAPPENS WHEN THE WEATHER YOU CAN FEEL ACTUALLY CHANGES
+    if current == RAIN:
+        #THE RAIN PUTS OUT EVERY CAMPFIRE
+        audio.play("thunder")
+        if world.extinguish_campfires() > 0:
+            messages.show_message("Heavy rain! It put out your campfire.", 3000)
+            audio.play("extinguish")
+        else:
+            messages.show_message("Heavy rain! Find shelter.", 3000)
+    elif current == COLD:
+        messages.show_message("A cold snap! Stay near a campfire.", 3000)
+        audio.play("wind_gust")
+    elif previous != CLEAR:
+        messages.show_message("The weather clears up.", 2500)
 
 
 def _update_weather_state(dt):
-    global current, upcoming, weather_timer
+    global current, sky_state, sky_sign, tick_timer, calm_timer, rain_warned, cold_warned
 
-    weather_timer -= dt
+    calm_timer -= dt
+    tick_timer -= dt
+    if tick_timer > 0:
+        return
+    tick_timer += hmm.TICK
 
-    #DECIDE THE NEXT WEATHER A LITTLE EARLY, SO THE PLAYER CAN BE WARNED
-    if upcoming is None and weather_timer <= WARNING_TIME:
-        upcoming = _pick_next_weather()
-        if upcoming == RAIN:
-            messages.show_message("Dark clouds gather... Rain is coming! (T = tent)", 4000)
-        elif upcoming == COLD:
-            messages.show_message("An icy wind picks up... Get wood for a fire!", 4000)
+    #1) THE HIDDEN SKY STATE MOVES ON (MARKOV CHAIN). NOTHING CHANGES DURING THE CALM START
+    if calm_timer <= 0:
+        sky_state = hmm.next_state(sky_state)
 
-    if weather_timer <= 0:
-        previous = current
-        current = upcoming if upcoming is not None else CLEAR
-        upcoming = None
-        weather_timer = random.randint(*WEATHER_DURATION[current])
+    #2) THE SKY SHOWS A NOISY SIGN OF THE HIDDEN STATE
+    sky_sign = hmm.emit(sky_state)
+    if sky_sign == hmm.WIND and current == CLEAR:
+        audio.play("wind_gust", 0.5)
 
-        if current == RAIN:
-            #THE RAIN PUTS OUT EVERY CAMPFIRE
-            audio.play("thunder")
-            if world.extinguish_campfires() > 0:
-                messages.show_message("Heavy rain! It put out your campfire.", 3000)
-                audio.play("extinguish")
-            else:
-                messages.show_message("Heavy rain! Find shelter.", 3000)
-        elif current == COLD:
-            messages.show_message("A cold snap! Stay near a campfire.", 3000)
-            audio.play("wind_gust")
-        elif previous != CLEAR:
-            messages.show_message("The weather clears up.", 2500)
+    #3) THE FORECAST (HMM FILTER) LEARNS FROM THE SIGN, NOT FROM THE HIDDEN STATE
+    forecast.observe(sky_sign)
+
+    #4) THE WEATHER YOU FEEL
+    previous = current
+    current = STATE_TO_WEATHER[sky_state]
+    if current != previous:
+        _start_weather(previous)
+
+    #WARN WHEN THE FORECAST SAYS BAD WEATHER IS LIKELY (IT CAN BE WRONG!)
+    if current == CLEAR:
+        if forecast.rain_soon >= hmm.WARNING_LEVEL and not rain_warned:
+            messages.show_message(f"Dark clouds... {forecast.rain_soon:.0%} chance of rain soon (T = tent)", 4000)
+            rain_warned = True
+        if forecast.cold_soon >= hmm.WARNING_LEVEL and not cold_warned:
+            messages.show_message(f"An icy wind... {forecast.cold_soon:.0%} chance of a cold snap soon", 4000)
+            cold_warned = True
+    if forecast.rain_soon < 0.25 or current != CLEAR:
+        rain_warned = False
+    if forecast.cold_soon < 0.25 or current != CLEAR:
+        cold_warned = False
 
 
 def _update_survival(dt, player_rect):
@@ -234,6 +269,7 @@ def _store_elapsed(value):
 def update(dt, elapsed_time, is_night, player_rect):
     #CALL ONCE PER FRAME WHILE THE GAME IS RUNNING
     global night_amount, rain_amount, cold_amount, is_night_now, night_warned
+    global cloud_amount, wind_amount
 
     is_night_now = is_night
     _store_elapsed(elapsed_time)
@@ -253,6 +289,9 @@ def update(dt, elapsed_time, is_night, player_rect):
     step = dt / 3000
     rain_amount = _approach(rain_amount, 1.0 if current == RAIN else 0.0, step)
     cold_amount = _approach(cold_amount, 1.0 if current == COLD else 0.0, step)
+    cloudy = sky_sign in (hmm.CLOUDS, hmm.RAINING)
+    cloud_amount = _approach(cloud_amount, 1.0 if cloudy else 0.0, dt / 4000)
+    wind_amount = _approach(wind_amount, 1.0 if sky_sign in (hmm.WIND, hmm.SNOWING) else 0.0, dt / 2500)
 
     _update_survival(dt, player_rect)
     _update_particles(dt)
@@ -327,6 +366,24 @@ def _update_particles(dt):
             drop[0] = random.uniform(0, WIDTH + 100)
             drop[1] = random.uniform(-60, 0)
 
+    #CLOUD SHADOWS DRIFT WITH THE WIND
+    global cloud_drift
+    cloud_drift += dt * (0.012 + 0.03 * wind_amount)
+
+    #WIND: LEAVES TUMBLING ACROSS THE SCREEN
+    wanted_leaves = int(34 * wind_amount)
+    while len(leaves) < wanted_leaves:
+        leaves.append([random.uniform(-WIDTH, 0), random.uniform(0, HEIGHT), random.uniform(0.7, 1.3),
+                       random.uniform(0, 6.28), random.choice(LEAF_COLOURS)])
+    del leaves[wanted_leaves:]
+    for leaf in leaves:
+        leaf[3] += dt * 0.008
+        leaf[0] += 0.32 * dt * leaf[2]
+        leaf[1] += math.sin(leaf[3]) * 0.06 * dt
+        if leaf[0] > WIDTH + 10:
+            leaf[0] = random.uniform(-80, -10)
+            leaf[1] = random.uniform(0, HEIGHT)
+
     #SNOW: SLOW, DRIFTING FLAKES
     wanted_flakes = int(110 * cold_amount)
     while len(snow_flakes) < wanted_flakes:
@@ -342,8 +399,34 @@ def _update_particles(dt):
             flake[1] = random.uniform(-20, 0)
 
 
+def _cloud_shadow(scale):
+    #A SOFT, LUMPY SHADOW (CACHED)
+    key = ("cloud", scale)
+    if key not in _light_cache:
+        w, h = int(300 * scale), int(170 * scale)
+        surface = pygame.Surface((w, h), pygame.SRCALPHA)
+        rng = random.Random(int(scale * 100))
+        for _ in range(9):
+            bw, bh = rng.uniform(0.35, 0.6) * w, rng.uniform(0.4, 0.7) * h
+            bx, by = rng.uniform(0, w - bw), rng.uniform(0, h - bh)
+            pygame.draw.ellipse(surface, (20, 30, 50, 46), (bx, by, bw, bh))
+        _light_cache[key] = surface
+    return _light_cache[key]
+
+
 def draw(screen, camera, player_rect, wolf_list, wolf_eye_positions):
     #DRAW EVERYTHING WEATHER-RELATED ON TOP OF THE WORLD (BUT UNDER THE HUD)
+
+    #CLOUDS: THEIR SHADOWS SLIDE OVER THE GROUND (A SIGN THAT RAIN MAY BE COMING)
+    if cloud_amount > 0.02:
+        span = WORLD_WIDTH + 600
+        for x, y, scale in CLOUDS:
+            shadow = _cloud_shadow(scale)
+            sx = (x + cloud_drift) % span - 300 - camera.x
+            sy = y - camera.y
+            if -shadow.get_width() < sx < WIDTH and -shadow.get_height() < sy < HEIGHT:
+                shadow.set_alpha(int(255 * cloud_amount))
+                screen.blit(shadow, (sx, sy))
 
     #COLD: A FROSTY BLUE HAZE
     if cold_amount > 0:
@@ -363,6 +446,10 @@ def draw(screen, camera, player_rect, wolf_list, wolf_eye_positions):
             lights.append((fire.centerx, fire.centery,
                            (CAMPFIRE_LIGHT + flicker) * (1.0 - 0.2 * rain_amount)))
 
+        #A LANTERN GLOWS IN THE TENT WHEN THE PLAYER IS INSIDE
+        if world.occupied_tent is not None:
+            lights.append((world.occupied_tent.centerx, world.occupied_tent.bottom - 30, 120))
+
         for x, y, radius in lights:
             circle = _light_circle(radius)
             r = circle.get_width() // 2
@@ -377,6 +464,14 @@ def draw(screen, camera, player_rect, wolf_list, wolf_eye_positions):
             pygame.draw.circle(glow, (255, 150, 60, int(40 * alpha / 235)), (60, 60), 60)
             pygame.draw.circle(glow, (255, 180, 80, int(40 * alpha / 235)), (60, 60), 35)
             screen.blit(glow, (fire.centerx - camera.x - 60, fire.centery - camera.y - 60))
+
+        if world.occupied_tent is not None:
+            tent = world.occupied_tent
+            glow = pygame.Surface((160, 120), pygame.SRCALPHA)
+            strength = alpha / 235
+            pygame.draw.ellipse(glow, (255, 170, 80, int(45 * strength)), (0, 20, 160, 100))
+            pygame.draw.ellipse(glow, (255, 200, 120, int(55 * strength)), (40, 40, 80, 60))
+            screen.blit(glow, (tent.centerx - camera.x - 80, tent.bottom - camera.y - 90))
 
         #GLOWING WOLF EYES IN THE DARK: YOU CAN'T SEE THE WOLF, BUT YOU CAN SEE IT WATCHING YOU
         if night_amount > 0.5:
@@ -398,6 +493,19 @@ def draw(screen, camera, player_rect, wolf_list, wolf_eye_positions):
         for x, y, speed in rain_drops:
             pygame.draw.line(rain_layer, (170, 190, 230, 150), (x, y), (x - 4, y + 14), 1)
         screen.blit(rain_layer, (0, 0))
+
+    #WIND: TUMBLING LEAVES AND FAINT GUST LINES
+    for x, y, speed, phase, colour in leaves:
+        w = 2 + int(abs(math.sin(phase)) * 3)
+        pygame.draw.rect(screen, colour, (int(x), int(y), w, 2))
+    if wind_amount > 0.3:
+        gust = _layer("gust")
+        gust.fill((0, 0, 0, 0))
+        for i, (x, y, speed, phase, colour) in enumerate(leaves[:8]):
+            length = 40 + 20 * speed
+            pygame.draw.line(gust, (255, 255, 255, int(60 * wind_amount)),
+                             (int(x) - 60 - length, int(y) + 12 * (i % 3)), (int(x) - 60, int(y) + 12 * (i % 3)), 1)
+        screen.blit(gust, (0, 0))
 
     #SNOWFLAKES
     for x, y, size, _ in snow_flakes:

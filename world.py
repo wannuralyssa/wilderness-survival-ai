@@ -2,6 +2,7 @@
 import math
 import random
 import pygame
+import tent_art
 from config import *
 import map_layout as layout
 import map_objects as objects
@@ -369,6 +370,7 @@ scaled_bush = None
 empty_bush = None
 log_image = None
 tent_image = None
+occupied_tent = None        #THE TENT THE PLAYER IS RESTING IN (DRAWN BY renderer.py INSTEAD)
 campfire_frames = []
 campfire_out_image = None
 ground_surface = None
@@ -401,7 +403,8 @@ def load_world_assets():
     #A BUSH WITH NO BERRIES LEFT LOOKS DULL UNTIL IT GROWS BACK
     empty_bush = _darker(scaled_bush, (130, 150, 120))
     log_image = load("log.png")
-    tent_image = load("tent.png")
+    tent_art.build()
+    tent_image = tent_art.images["open"]
     campfire_frames = [load(f"campfire_{i}.png") for i in range(3)]
     campfire_out_image = load("campfire_out.png")
 
@@ -696,7 +699,7 @@ def get_sprites(camera):
 
     #TENTS ARE SORTED BY THEIR BACK EDGE, SO THE PLAYER IS DRAWN IN FRONT WHEN INSIDE
     for tent in tents:
-        if view.colliderect(tent):
+        if view.colliderect(tent) and tent is not occupied_tent:
             pos = tent_image.get_rect(midbottom=(tent.centerx, tent.bottom)).topleft
             sprites.append((tent.top, tent_image, (pos[0] - camera.x, pos[1] - camera.y)))
 

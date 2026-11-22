@@ -8,6 +8,7 @@ import survival_system as survival
 import wolves
 import weather
 import world
+import hmm
 
 
 def settings(day):
@@ -28,8 +29,8 @@ def settings(day):
         #HEALING GETS SLOWER (MILLISECONDS PER +1 HEALTH)
         "regen_interval": int(3000 * (1 + 0.15 * d)),
 
-        #BAD WEATHER: MORE OFTEN, AND IT DRAINS MORE ENERGY
-        "clear_chance": max(0.4 - 0.03 * d, 0.1),
+        #BAD WEATHER: STORM AND COLD FRONTS FORM MORE OFTEN (hmm.py), AND DRAIN MORE ENERGY
+        "front_chance": min(0.06 + 0.005 * d, 0.1),
         "weather_drain": 1 + 0.1 * d,
 
         #TREES, ROCKS AND BERRY BUSHES TAKE LONGER TO GROW BACK
@@ -50,8 +51,7 @@ def apply(day):
     survival.THIRST_PER_DAY = s["thirst_per_day"]
     survival.REGEN_INTERVAL = s["regen_interval"]
 
-    bad = 1 - s["clear_chance"]
-    weather.NEXT_WEATHER_CHANCE = {weather.CLEAR: s["clear_chance"], weather.RAIN: bad / 2, weather.COLD: bad / 2}
+    hmm.FRONT_CHANCE = s["front_chance"]
     weather.DIFFICULTY_DRAIN = s["weather_drain"]
 
     world.REGROW_MULTIPLIER = s["regrow_multiplier"]

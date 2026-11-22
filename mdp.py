@@ -297,6 +297,20 @@ def describe(state):
 #----------------------------------------------------------------
 # TURNING THE REAL GAME INTO AN ABSTRACT STATE
 #----------------------------------------------------------------
+#HMM + MDP: IF TRUE, THE AI TREATS "BAD WEATHER IS LIKELY SOON" (FROM THE HMM FORECAST)
+#AS BAD WEATHER, SO IT PREPARES IN ADVANCE. SET TO FALSE TO COMPARE WITHOUT THE FORECAST.
+USE_FORECAST = True
+
+
+def forecast_context(weather_module):
+    #RAIN OR COLD IF THE HMM SAYS IT IS LIKELY IN THE NEXT 30 SECONDS, ELSE None
+    import hmm
+    fc = weather_module.forecast
+    if max(fc.rain_soon, fc.cold_soon) < hmm.WARNING_LEVEL:
+        return None
+    return RAIN if fc.rain_soon >= fc.cold_soon else COLD
+
+
 def observe(survival, world_module, weather_module, player_rect, wolf_list):
     import math
     health = survival.health
@@ -311,6 +325,10 @@ def observe(survival, world_module, weather_module, player_rect, wolf_list):
         ctx = RAIN
     elif weather_module.current == weather_module.COLD:
         ctx = COLD
+    elif USE_FORECAST and forecast_context(weather_module) is not None:
+        #HMM: THE SKY SAYS BAD WEATHER IS LIKELY SOON, SO PLAN AS IF IT IS ALREADY HERE
+        #(BUILD THE TENT / FIRE AND GET INSIDE BEFORE THE RAIN OR COLD ARRIVES)
+        ctx = forecast_context(weather_module)
     elif weather_module.night_amount > 0.5:
         ctx = NIGHT
     else:

@@ -9,22 +9,23 @@ import audio
 OPTIONS = ["Play", "Watch AI Survive", "How to Play", "Quit"]
 
 CONTROLS = [
-    ("Arrow keys", "Move"),
+    ("Arrows / WASD", "Move"),
     ("E", "Collect, drink, eat, rest, relight a fire"),
     ("Space", "Attack a wolf in front of you"),
     ("C", "Build a campfire (3 wood, 2 stone)"),
     ("T", "Build a tent (4 wood)"),
+    ("H", "Show / hide the weather forecast (HMM)"),
     ("Esc", "Back to the main menu"),
-    ("V", "Sound on / off")
+    ("V  /  F11", "Sound on / off  -  Full screen")
 ]
 
 TIPS = [
     "Survive as many days as you can.",
     "Keep Food and Water above half and your health slowly heals.",
-    "Rain puts out campfires: shelter in a tent.",
-    "Cold drains energy: stand by a campfire to warm up.",
+    "Rain puts out fires: tent. Cold drains energy: campfire.",
+    "Read the sky: clouds often bring rain, wind a cold snap.",
     "Wolves hunt from further away at night.",
-    "Watch AI Survive: an AI plans with an MDP + A* search. Esc = menu."
+    "Watch AI Survive: the AI uses an MDP, A* search and an HMM."
 ]
 
 GOLD = (250, 204, 96)
@@ -99,7 +100,7 @@ def _draw_main(screen, selected, now):
             _panel(screen, rect, (18, 22, 28, 190), (255, 255, 255, 60))
             _centered_text(screen, option, "button", TEXT, rect.center, shadow=False)
 
-    hint = fonts["text"].render("Up / Down to choose   -   Enter to select   -   or use the mouse", True, TEXT_DIM)
+    hint = fonts["text"].render("Up / Down to choose   -   Enter to select   -   F11 full screen", True, TEXT_DIM)
     screen.blit(hint, hint.get_rect(center=(WIDTH // 2, HEIGHT - 30)))
 
 
@@ -117,9 +118,9 @@ def _draw_help(screen):
         pygame.draw.rect(screen, GOLD, key_rect, border_radius=6)
         screen.blit(key_surface, key_surface.get_rect(center=key_rect.center))
         screen.blit(fonts["text"].render(action, True, TEXT), (panel.x + 180, y + 3))
-        y += 34
+        y += 31
 
-    y += 10
+    y += 8
     for tip in TIPS:
         screen.blit(fonts["text"].render("-  " + tip, True, TEXT_DIM), (panel.x + 40, y))
         y += 24
@@ -162,6 +163,11 @@ def run(screen, clock):
                     audio.play("menu_move")
                 elif event.key == pygame.K_v:
                     audio.toggle_mute()
+                elif event.key == pygame.K_F11:
+                    try:
+                        pygame.display.toggle_fullscreen()
+                    except pygame.error:
+                        pass
                 elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_KP_ENTER):
                     choice = selected
             elif event.type == pygame.MOUSEMOTION:
