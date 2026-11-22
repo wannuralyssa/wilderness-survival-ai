@@ -11,6 +11,8 @@ import time_system
 import renderer
 import game_over as game_over_screen
 import wolves
+import weather
+import menu
 
 pygame.init()
 
@@ -27,6 +29,9 @@ pygame.display.set_caption("Wilderness Survival AI Simulator")
 #LOAD GAME ASSETS
 renderer.load_assets()
 world.load_world_assets()
+player_module.load_player_frames()
+hud.load_assets()
+wolves.load_wolf_frames()
 
 #IN-GAME TIME
 start_time = pygame.time.get_ticks()
@@ -39,9 +44,10 @@ night_overlay.fill((10, 15, 50))
 night_overlay.set_alpha(120)
 
 #CREATE PLAYER
-player = player_module.create_player(380, 280)
+player = player_module.create_player(*world.PLAYER_START)
 wolf_list = wolves.create_wolves()
 player_direction = "down"
+player_is_moving = False
 player_speed = 5
 
 #RESTART GAME
@@ -58,7 +64,7 @@ def restart_game():
     world.reset_world()
 
     #RESET PLAYER
-    player = player_module.create_player(380, 280)
+    player = player_module.create_player(*world.PLAYER_START)
 
     #RESET DAY COUNTER
     day = 1
@@ -75,6 +81,15 @@ def restart_game():
     #RESET WOLVES
     wolf_list = wolves.create_wolves()
 
+    #RESET WEATHER
+    weather.reset()
+
+#SHOW THE MAIN MENU FIRST
+if menu.run(screen, clock) == "quit":
+    running = False
+else:
+    restart_game()
+
 #GAME LOOP
 while running:
 
@@ -88,11 +103,23 @@ while running:
                     restart_game()
                 elif event.key == pygame.K_q:
                     running = False
+                elif event.key == pygame.K_m:
+                    #BACK TO THE MAIN MENU
+                    if menu.run(screen, clock) == "quit":
+                        running = False
+                    else:
+                        restart_game()
             elif survival.is_alive:
                 if event.key == pygame.K_e:
                      interactions.interact_with_world(player)
                 elif event.key == pygame.K_c:
                     interactions.craft_campfire(player)
+                elif event.key == pygame.K_t:
+                    interactions.craft_tent(player)
+                elif event.key == pygame.K_SPACE:
+                    #SWING AT WHATEVER IS IN FRONT OF THE PLAYER
+                    if wolves.player_attack(wolf_list, player, player_direction, survival):
+                        player_module.start_attack()
             
 
     #UPDATE DAY/NIGHT CYCLE
@@ -124,6 +151,8 @@ while running:
     #CHECK KEYBOARD INPUT
     dx = 0
     dy = 0
+    dt = clock.tick(60)
+    
 
     if not game_over:
         keys = pygame.key.get_pressed()
@@ -140,6 +169,11 @@ while running:
         if keys[pygame.K_DOWN]:
             dy = player_speed
 
+        #SLOW DOWN ON MUD AND TALL GRASS, IN THE RAIN, AND WHEN EXHAUSTED
+        speed_factor = world.speed_multiplier(player) * weather.player_speed_factor()
+        dx = round(dx * speed_factor)
+        dy = round(dy * speed_factor)
+
         if dx < 0:
             player_direction = "left"
         elif dx > 0:
@@ -151,30 +185,56 @@ while running:
 
     #MOVE THE PLAYER
     if not game_over:
+        #REMEMBER THE PLAYER'S PREVIOUS POSITION
+        previous_x = player.x
+        previous_y = player.y
+
         player = player_module.move_player(
             player,
             dx,
-            dy,
+            dy, 
             world.obstacles,
-            WIDTH,
-            HEIGHT
+            WORLD_WIDTH,
+            WORLD_HEIGHT
+        )
+
+        #CHECK WHETHER THE PLAYER ACTUALLY MOVED
+        player_is_moving = (
+            player.x != previous_x or
+            player.y != previous_y
         )
 
         #MOVE THE WOLVES
-        wolves.move_wolves(wolf_list, WIDTH, HEIGHT, player, world.obstacles)
+        wolves.move_wolves(wolf_list, WORLD_WIDTH, WORLD_HEIGHT, player, world.obstacles)
 
         #WOLF ATTACK
         wolves.attack_player(wolf_list, player, survival, messages)
 
+        #NIGHTFALL, RAIN AND COLD
+        weather.update(dt, elapsed_time, is_night, player)
+
+        #HEALTH SLOWLY COMES BACK WHEN FED, HYDRATED AND RESTED
+        survival.regenerate(dt, weather.player_near_fire or weather.player_sheltered)
+
+        #TREES AND ROCKS GROW BACK, DEFEATED WOLVES ARE REPLACED
+        world.update(pygame.time.get_ticks())
+        wolves.update_respawns(wolf_list, player)
+
         if not survival.is_alive:
             game_over = True
             days_survived = day - 1
+    else:
+        player_is_moving = False
+
+    #UPDATE PLAYER ANIMATION
+    player_module.update_player_animation(player_is_moving, player_direction, dt)
+
 
                
     #RENDER GAME
     if game_over:
         screen.fill((20, 20, 20))
-        game_over_screen.gameover(screen, font, days_survived)
+        game_over_screen.gameover(screen, font, days_survived, wolves.wolves_defeated)
         pygame.display.flip()
     else:
         renderer.draw_frame(
@@ -187,8 +247,5 @@ while running:
             night_overlay,
             wolf_list
         )
-
-    #LIMIT THE GAME TO 60FPS
-    clock.tick(60)
 
 pygame.quit()
