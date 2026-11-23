@@ -9,7 +9,7 @@ The player must survive in a wilderness environment by collecting resources, man
 ## 🎮 Current Features
 
 - **Player movement:** Explore the environment using the arrow keys or WASD, with a walk cycle that alternates the legs.
-- **Resource collection:** Gather wood, stone, wild berries, and water. Harvested trees and rocks grow back after a while; each berry bush can be eaten from 3 times, then needs to grow back.
+- **Resource collection:** Gather wood, stone, wild berries, and water. Like in Minecraft, you hold E to chop a tree or mine a rock: the player swings, the tree or rock shakes, chips fly and a ring fills up; let go or walk away and the progress is lost. Harvested trees and rocks grow back after a while; each berry bush can be eaten from 3 times, then needs to grow back.
 - **Music and sound:** Original music (menu, day and night themes that crossfade), ambient rain, wind and campfire sounds, footsteps that change with the ground, and effects for every action. All synthesized from code by `make_audio.py`: no samples or downloads.
 - **Growing difficulty:** Every day the wilderness gets harsher (`difficulty.py`): more and tougher wolves, faster hunger and thirst, slower healing and regrowth, and more frequent, harsher bad weather. Every run eventually ends, so days survived is a real score.
 - **Main menu:** Play yourself, watch the AI survive, read how to play, or quit (keyboard or mouse). Esc returns to the menu.
@@ -39,7 +39,8 @@ The player must survive in a wilderness environment by collecting resources, man
 | Key | Action |
 |---|---|
 | Arrow keys / WASD | Move the player |
-| E | Interact: collect, drink, eat, rest at a campfire, relight a campfire (1 wood) |
+| E (hold) | Chop a tree / mine a rock: hold E until the ring fills (about 1.6 s for wood, 2.2 s for stone) |
+| E (press) | Drink, eat berries, rest at a campfire, relight a campfire (1 wood) |
 | Space | Attack in the direction you are facing (costs 1 energy) |
 | C | Craft a campfire (3 wood, 2 stone) |
 | T | Build a tent (4 wood) |
@@ -170,3 +171,4 @@ except where applicable law or third-party licences permit otherwise.
 
 Third-party libraries and assets remain subject to their
 respective licences.
+
