@@ -116,10 +116,8 @@ def interact_with_world(player_rect):
     for i, tree in enumerate(world.trees):
         if player_rect.colliderect(tree.inflate(40, 40)):
             if i not in world.collected_trees:
-                world.wood += 1
-                world.collect_tree(i)
-                audio.play("chop")
-                messages.show_message("You collected 1 wood!")
+                #CHOPPING IS DONE BY HOLDING E (harvest.py), NOT BY ONE PRESS
+                pass
             else:
                 messages.show_message("This tree needs time to grow back.")
                 audio.play("fail")
@@ -129,10 +127,8 @@ def interact_with_world(player_rect):
     for i, rock in enumerate(world.rocks):
         if player_rect.colliderect(rock.inflate(40, 40)):
             if i not in world.collected_rocks:
-                world.stone += 1
-                world.collect_rock(i)
-                audio.play("mine")
-                messages.show_message("You collected 1 stone!")
+                #MINING IS DONE BY HOLDING E (harvest.py), NOT BY ONE PRESS
+                pass
             else:
                 messages.show_message("This rock is mined out for now.")
                 audio.play("fail")

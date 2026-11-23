@@ -10,6 +10,9 @@ import weather
 import game_clock
 import audio
 import json
+import survival_system
+import game_theory as gt
+import pack_learning
 
 #WOLF SPRITES (FROM THE WOLF SPRITESHEET, SLICED INTO assets/wolf/anim/)
 WOLF_SPRITE_SCALE = 0.9       #THE SHEET IS 84 x 56 PER FRAME
@@ -131,6 +134,8 @@ def create_wolves():
 
 
 def move_wolves(wolves, width, height, player, obstacles):
+    track_player(player)
+    pick_active_attacker(wolves, player)
     for wolf_data in wolves:
 
         wolf = wolf_data["rect"]
@@ -156,18 +161,21 @@ def move_wolves(wolves, width, height, player, obstacles):
             continue
         wolf_data["howl_until"] = 0
 
-        if distance_to_player < 60:
-            wolf_data["chasing"] = True
-            #CLOSE ENOUGH TO LUNGE STRAIGHT AT THE PLAYER
-            speed = WOLF_SPEED * world.speed_multiplier(wolf)
-            dx = player.centerx - wolf.centerx
-            dy = player.centery - wolf.centery
-            saved = (wolf.x, wolf.y, wolf_data["fx"], wolf_data["fy"])
-            step_wolf(wolf_data, dx / max(1, distance_to_player) * speed,
-                      dy / max(1, distance_to_player) * speed)
-            if wolf.collidelist(obstacles) != -1:
-                wolf.x, wolf.y, wolf_data["fx"], wolf_data["fy"] = saved
-        elif detect_player(wolf, player, weather.wolf_detection_range() + DETECTION_BONUS):
+        detected = detect_player(wolf, player, weather.wolf_detection_range() + DETECTION_BONUS)
+        ignoring = wolf_data.get("ignore_until", 0) > game_clock.now()
+        if ignoring:
+            #THIS WOLF HAS GIVEN UP FOR NOW AND WANDERS OFF
+            detected = False
+            wolf_data["enc"] = None
+        if not ignoring and distance_to_player < ENGAGE_RANGE and (detected or distance_to_player < 100):
+            #CLOSE: AN ENCOUNTER. EACH ROUND THE WOLF PICKS A TACTIC (GAME THEORY + WHAT THE PACK
+            #HAS LEARNED ABOUT THIS PLAYER)
+            encounter_step(wolf_data, player, obstacles, distance_to_player)
+        elif wolf_data.get("enc") is not None and distance_to_player >= ENGAGE_RANGE + 40:
+            finish_round(wolf_data, player)
+            wolf_data["enc"] = None
+            continue
+        elif detected:
             wolf_data["chasing"] = True
             #RECALCULATE THE PATH EVERY 30 FRAMES
             if wolf_data["path_timer"] <= 0:
@@ -234,6 +242,195 @@ def move_wolves(wolves, width, height, player, obstacles):
         update_wolf_animation(wolf_data, wolf.x - old_x, wolf.y - old_y)
 
 
+#----------------------------------------------------------------
+# ENCOUNTERS (GAME THEORY + MACHINE LEARNING)
+#----------------------------------------------------------------
+ENGAGE_RANGE = 170          #CLOSER THAN THIS, THE WOLF STOPS CHASING AND STARTS AN ENCOUNTER
+ROUND_TIME = 1400           #MILLISECONDS PER ROUND (BOTH SIDES PICK A TACTIC EACH ROUND)
+CIRCLE_RADIUS = 85          #JUST OUT OF REACH OF A SWING
+STALK_DISTANCE = 150
+LUNGE_TIME = 900            #MILLISECONDS A LUNGE LASTS
+LEARNING_MODE = "play"      #WHOSE HABITS THE PACK IS LEARNING: "play" (YOU) OR "ai"
+_player_last = None
+player_was_moving = False
+
+
+def track_player(player):
+    #IS THE PLAYER MOVING? (A FEATURE FOR THE PACK'S PREDICTIONS)
+    global _player_last, player_was_moving
+    centre = player.center
+    player_was_moving = _player_last is not None and centre != _player_last
+    _player_last = centre
+
+
+active_attacker = None       #ONLY ONE WOLF ATTACKS AT A TIME; THE OTHERS STALK AND WAIT THEIR TURN
+
+
+def pick_active_attacker(wolves, player):
+    global active_attacker
+    now = game_clock.now()
+    engaged = [w for w in wolves
+               if w.get("ignore_until", 0) <= now and math.hypot(
+                   w["rect"].centerx - player.centerx, w["rect"].centery - player.centery) < ENGAGE_RANGE]
+    if active_attacker in engaged:
+        return
+    active_attacker = min(engaged, key=lambda w: math.hypot(
+        w["rect"].centerx - player.centerx, w["rect"].centery - player.centery), default=None)
+
+
+def is_threat(wolf_data):
+    #FALSE WHILE A WOLF HAS GIVEN UP AND IS WANDERING AWAY
+    return wolf_data.get("ignore_until", 0) <= game_clock.now()
+
+
+def give_up(wolf_data, player, seconds=8):
+    #THE WOLF LOSES INTEREST AND WANDERS AWAY FOR A WHILE
+    wolf = wolf_data["rect"]
+    wolf_data["ignore_until"] = game_clock.now() + seconds * 1000
+    wolf_data["enc"] = None
+    dx, dy = wolf.centerx - player.centerx, wolf.centery - player.centery
+    wolf_data["direction"] = ((1 if dx > 0 else -1), 0) if abs(dx) >= abs(dy) else (0, (1 if dy > 0 else -1))
+    wolf_data["move_timer"] = 90
+    wolf_data["stalk_rounds"] = 0
+
+
+def round_context(wolf_data):
+    #THE GAME BEING PLAYED RIGHT NOW: HOW HARD WOLVES BITE, HOW HURT THIS WOLF IS, FIRE NEARBY?
+    return survival_system.WOLF_DAMAGE, wolf_data["health"], weather.player_near_fire
+
+
+def start_round(wolf_data, player, now):
+    bite, health, fire = round_context(wolf_data)
+    A = gt.payoff_matrix(bite, health, fire)
+    _, nash, _ = gt.equilibrium(bite, health, fire)
+    features = (int(survival_system.health < 40), int(fire), int(player_was_moving))
+    model = pack_learning.models[LEARNING_MODE]
+    mix = pack_learning.wolf_mix(A, nash, model, features)
+    tactic = random.choices(range(len(gt.WOLF_TACTICS)), weights=mix)[0]
+    wolf_data["enc"] = {
+        "tactic": tactic, "start": now, "until": now + ROUND_TIME, "features": features,
+        "matrix": A, "spin": random.choice((-1, 1)), "dart": False, "recorded": False,
+        "player_start": player.center, "start_distance": math.hypot(
+            wolf_data["rect"].centerx - player.centerx, wolf_data["rect"].centery - player.centery),
+        "health_start": survival_system.health, "wolf_health_start": wolf_data["health"]
+    }
+
+
+def finish_round(wolf_data, player, killed=False):
+    #WHAT DID THE PLAYER DO THIS ROUND? THE PACK LEARNS FROM IT
+    enc = wolf_data.get("enc")
+    if enc is None or enc["recorded"] or enc.get("forced"):
+        return
+    enc["recorded"] = True
+    swung = last_player_attack >= enc["start"]
+    wolf = wolf_data["rect"]
+    distance = math.hypot(wolf.centerx - player.centerx, wolf.centery - player.centery)
+    backed_off = distance - enc["start_distance"] >= 15 or math.hypot(
+        player.centerx - enc["player_start"][0], player.centery - enc["player_start"][1]) >= 40
+    if swung:
+        label = gt.ATTACK
+    elif backed_off:
+        label = gt.EVADE
+    else:
+        return          #THE PLAYER DID NEITHER: NOTHING TO LEARN FROM
+    model = pack_learning.models[LEARNING_MODE]
+    model.update(enc["features"], label)
+    #WHAT ACTUALLY HAPPENED, IN THE SAME UNITS AS THE PAYOFF MATRIX
+    payoff = (survival_system.health - enc["health_start"]) \
+        + gt.HIT_VALUE * (enc["wolf_health_start"] - max(0, wolf_data["health"])) \
+        + (gt.KILL_VALUE - gt.HIT_VALUE if killed else 0)
+    model.record_outcome(label, enc["tactic"], payoff)
+
+
+def move_with_obstacles(wolf_data, vx, vy, obstacles):
+    #MOVE, SLIDING ALONG OBSTACLES INSTEAD OF STOPPING DEAD
+    wolf = wolf_data["rect"]
+    for step_x, step_y in ((vx, vy), (vx, 0), (0, vy)):
+        saved = (wolf.x, wolf.y, wolf_data["fx"], wolf_data["fy"])
+        step_wolf(wolf_data, step_x, step_y)
+        if wolf.collidelist(obstacles) == -1:
+            return True
+        wolf.x, wolf.y, wolf_data["fx"], wolf_data["fy"] = saved
+    return False
+
+
+def encounter_step(wolf_data, player, obstacles, distance):
+    now = game_clock.now()
+    enc = wolf_data.get("enc")
+    if enc is None or now >= enc["until"]:
+        finish_round(wolf_data, player)
+        if wolf_data is not active_attacker:
+            #NOT THIS WOLF'S TURN: IT STALKS AND WAITS
+            wolf_data["enc"] = {"tactic": gt.STALK, "start": now, "until": now + 700, "forced": True,
+                                "recorded": True, "dart": False, "spin": 1}
+        else:
+            start_round(wolf_data, player, now)
+            #A WOLF THAT KEEPS HANGING BACK (OR FACES A FIRE) EVENTUALLY GIVES UP
+            if wolf_data["enc"]["tactic"] == gt.STALK:
+                wolf_data["stalk_rounds"] = wolf_data.get("stalk_rounds", 0) + 1
+                if wolf_data["stalk_rounds"] >= 3 or (weather.player_near_fire and random.random() < 0.5):
+                    give_up(wolf_data, player)
+                    return
+            else:
+                wolf_data["stalk_rounds"] = 0
+        enc = wolf_data["enc"]
+
+    wolf = wolf_data["rect"]
+    dx, dy = player.centerx - wolf.centerx, player.centery - wolf.centery
+    d = max(1.0, distance)
+    ux, uy = dx / d, dy / d                         #UNIT VECTOR TOWARDS THE PLAYER
+    speed = WOLF_SPEED * world.speed_multiplier(wolf)
+    tactic = enc["tactic"]
+
+    #A CIRCLING WOLF DARTS IN THE MOMENT YOU SWING (YOU ARE OPEN FOR A SPLIT SECOND)
+    if tactic == gt.CIRCLE and last_player_attack >= enc["start"] and wolf_data["attack_timer"] <= 0:
+        enc["dart"] = True
+
+    #A LUNGE IS ONE CHARGE (UNDER A SECOND); AFTER THAT THE WOLF FALLS BACK
+    if tactic == gt.LUNGE and not enc["dart"] and now - enc["start"] > LUNGE_TIME:
+        tactic = gt.STALK
+
+    if tactic == gt.LUNGE or enc["dart"]:
+        wolf_data["chasing"] = True
+        boost = 2.2 if enc["dart"] else 1.7
+        move_with_obstacles(wolf_data, ux * speed * boost, uy * speed * boost, obstacles)
+        #CHARGING INTO FIRELIGHT SCARES A WOLF OFF
+        for fire in world.lit_campfires():
+            if math.hypot(fire.centerx - wolf.centerx, fire.centery - wolf.centery) < 60:
+                scare_off(wolf_data, fire)
+                break
+    elif tactic == gt.CIRCLE:
+        #MOVE SIDEWAYS AROUND THE PLAYER, KEEPING JUST OUT OF REACH
+        tx, ty = -uy * enc["spin"], ux * enc["spin"]
+        pull = max(-1.0, min(1.0, (distance - CIRCLE_RADIUS) / 25))
+        vx, vy = tx + ux * pull, ty + uy * pull
+        length = max(0.01, math.hypot(vx, vy))
+        if not move_with_obstacles(wolf_data, vx / length * speed * 1.2, vy / length * speed * 1.2, obstacles):
+            enc["spin"] *= -1
+    else:
+        #STALK: HANG BACK, KEEP WATCHING, FOLLOW IF THE PLAYER MOVES AWAY
+        gap = distance - STALK_DISTANCE
+        if abs(gap) > 20:
+            direction = 1 if gap > 0 else -1
+            move_with_obstacles(wolf_data, ux * speed * 0.7 * direction, uy * speed * 0.7 * direction, obstacles)
+        if abs(dx) > 6:
+            wolf_data["face_right"] = dx > 0
+
+
+def scare_off(wolf_data, fire):
+    wolf = wolf_data["rect"]
+    dx, dy = wolf.centerx - fire.centerx, wolf.centery - fire.centery
+    d = max(1.0, math.hypot(dx, dy))
+    wolf_data["knock_vx"], wolf_data["knock_vy"] = dx / d * 6, dy / d * 6
+    wolf_data["stun_timer"] = WOLF_STUN_FRAMES
+    wolf_data["face_right"] = dx < 0
+    set_anim(wolf_data, "hurt")
+    audio.play("wolf_yelp")
+    enc = wolf_data.get("enc")
+    if enc is not None:
+        enc["until"] = game_clock.now()       #THE ROUND IS OVER
+
+
 def knock_back(wolf_data, obstacles):
     #SLIDE THE WOLF AWAY FROM THE PLAYER, SLOWING DOWN EACH FRAME, WITHOUT GOING THROUGH OBSTACLES
     wolf = wolf_data["rect"]
@@ -285,6 +482,7 @@ def player_attack(wolves, player_rect, direction, survival):
         audio.play("hit")
         if wolf_data["health"] <= 0:
             audio.play("wolf_die")
+            finish_round(wolf_data, player_rect, killed=True)
             wolves.remove(wolf_data)
             #KEEP THE BODY AROUND FOR ITS DEATH ANIMATION (IT CAN'T BITE OR BE HIT ANY MORE)
             wolf_data["face_right"] = wolf.centerx < player_rect.centerx
@@ -421,6 +619,12 @@ def attack_player(wolves, player, survival, messages):
             if wolf_data["attack_timer"] <= 0:
                 survival.wolf_attack()
                 wolf_data["bite_time"] = game_clock.now()
+                #AFTER A BITE THE WOLF BACKS OFF FOR A MOMENT, THEN A NEW ROUND STARTS
+                if wolf_data.get("enc") is not None:
+                    finish_round(wolf_data, player)
+                    now = game_clock.now()
+                    wolf_data["enc"] = {"tactic": gt.STALK, "start": now, "until": now + 900,
+                                        "forced": True, "recorded": True, "dart": False, "spin": 1}
                 if abs(player.centerx - wolf.centerx) > 4:
                     wolf_data["face_right"] = player.centerx > wolf.centerx
                 audio.play("wolf_bite")

@@ -1,3 +1,8 @@
-days_survived,wolves_defeated,decisions
-11,71,8183
-13,55,14084
+days_survived,wolves_defeated,decisions,outcome
+11,71,8183,
+13,55,14084,
+11,38,10246,
+12,65,14499,
+4,2,1004,hunger and thirst
+8,13,13903,hunger and thirst
+10,8,14011,escaped

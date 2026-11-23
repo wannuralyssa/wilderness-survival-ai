@@ -3,6 +3,7 @@ import math
 import random
 import pygame
 import tent_art
+import fire_art
 from config import *
 import map_layout as layout
 import map_objects as objects
@@ -43,6 +44,7 @@ stone = 0
 #BUILT BY THE PLAYER
 campfires = []
 campfire_lit = []       #TRUE/FALSE FOR EACH CAMPFIRE (RAIN PUTS THEM OUT)
+campfire_blockers = []  #THE PART OF EACH CAMPFIRE YOU CAN'T WALK THROUGH
 tents = []
 
 
@@ -341,9 +343,22 @@ def update(now):
             del collected[index]
 
 
+def campfire_blocker(rect):
+    #THE STONE RING BLOCKS WALKING (NOBODY WALKS THROUGH A FIRE)
+    return pygame.Rect(rect.x + 1, rect.bottom - 14, rect.width - 2, 12)
+
+
 def add_campfire(rect):
     campfires.append(rect)
     campfire_lit.append(True)
+    blocker = campfire_blocker(rect)
+    campfire_blockers.append(blocker)
+    obstacles.append(blocker)
+    #A* (WOLVES AND THE AI) GOES AROUND THE FIRE TOO
+    grid = get_cost_grid()
+    r, c = blocker.centery // CELL_SIZE, blocker.centerx // CELL_SIZE
+    if 0 <= r < len(grid) and 0 <= c < len(grid[0]):
+        grid[r][c] = None
 
 
 def lit_campfires():
@@ -371,6 +386,7 @@ empty_bush = None
 log_image = None
 tent_image = None
 occupied_tent = None        #THE TENT THE PLAYER IS RESTING IN (DRAWN BY renderer.py INSTEAD)
+harvest_shake = None        #("tree" OR "rock", INDEX, X OFFSET) WHILE IT IS BEING CHOPPED / MINED
 campfire_frames = []
 campfire_out_image = None
 ground_surface = None
@@ -405,8 +421,9 @@ def load_world_assets():
     log_image = load("log.png")
     tent_art.build()
     tent_image = tent_art.images["open"]
-    campfire_frames = [load(f"campfire_{i}.png") for i in range(3)]
-    campfire_out_image = load("campfire_out.png")
+    fire_art.build()
+    campfire_frames = fire_art.lit_frames
+    campfire_out_image = fire_art.out_frames
 
     build_ground_surface()
 
@@ -680,8 +697,9 @@ def get_sprites(camera):
     for i, tree in enumerate(trees):
         if view.colliderect(tree):
             image = depleted_trees[i % 2] if i in collected_trees else scaled_trees[i % 2]
+            shake = harvest_shake[2] if harvest_shake and harvest_shake[:2] == ("tree", i) else 0
             sprites.append((tree.bottom, image,
-                            (tree.centerx - 40 - camera.x, tree.bottom - 90 - camera.y)))
+                            (tree.centerx - 40 + shake - camera.x, tree.bottom - 90 - camera.y)))
 
     for i, rock in enumerate(rocks):
         if view.colliderect(rock):
@@ -689,8 +707,9 @@ def get_sprites(camera):
                 sprites.append((rock.bottom, depleted_rock,
                                 (rock.centerx - 17 - camera.x, rock.bottom - 28 - camera.y)))
             else:
+                shake = harvest_shake[2] if harvest_shake and harvest_shake[:2] == ("rock", i) else 0
                 sprites.append((rock.bottom, scaled_rock,
-                                (rock.centerx - 27 - camera.x, rock.bottom - 45 - camera.y)))
+                                (rock.centerx - 27 + shake - camera.x, rock.bottom - 45 - camera.y)))
 
     for i, bush in enumerate(berry_bushes):
         if view.colliderect(bush):
@@ -704,11 +723,13 @@ def get_sprites(camera):
             sprites.append((tent.top, tent_image, (pos[0] - camera.x, pos[1] - camera.y)))
 
     #CAMPFIRES FLICKER BETWEEN 3 FRAMES; PUT-OUT CAMPFIRES SHOW ASHES
-    frame = (game_clock.now() // 120) % len(campfire_frames)
-    for campfire, lit in zip(campfires, campfire_lit):
+    now = game_clock.now()
+    for i, (campfire, lit) in enumerate(zip(campfires, campfire_lit)):
         if view.colliderect(campfire):
-            image = campfire_frames[frame] if lit else campfire_out_image
-            pos = image.get_rect(center=(campfire.centerx, campfire.centery - 6)).topleft
+            #EACH FIRE STARTS AT A DIFFERENT POINT IN THE LOOP SO THEY DON'T FLICKER IN SYNC
+            frame = fire_art.frame_index(now + i * 370)
+            image = campfire_frames[frame] if lit else campfire_out_image[frame]
+            pos = image.get_rect(midbottom=(campfire.centerx, campfire.bottom + 2)).topleft
             sprites.append((campfire.bottom, image, (pos[0] - camera.x, pos[1] - camera.y)))
 
     return sprites
@@ -722,6 +743,13 @@ def reset_world():
     collected_rocks.clear()
     collected_bushes.clear()
     bush_servings.clear()
+    global _cost_grid
+    if campfire_blockers:
+        for blocker in campfire_blockers:
+            if blocker in obstacles:
+                obstacles.remove(blocker)
+        campfire_blockers.clear()
+        _cost_grid = None           #REBUILT WITHOUT THE OLD FIRES
     campfires.clear()
     campfire_lit.clear()
     tents.clear()

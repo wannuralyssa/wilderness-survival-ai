@@ -10,22 +10,22 @@ OPTIONS = ["Play", "Watch AI Survive", "How to Play", "Quit"]
 
 CONTROLS = [
     ("Arrows / WASD", "Move"),
-    ("E", "Collect, drink, eat, rest, relight a fire"),
+    ("E", "Hold: chop / mine.  Press: drink, eat, rest, relight"),
     ("Space", "Attack a wolf in front of you"),
     ("C", "Build a campfire (3 wood, 2 stone)"),
     ("T", "Build a tent (4 wood)"),
-    ("H", "Show / hide the weather forecast (HMM)"),
+    ("H  /  G", "Weather forecast (HMM)  /  wolf pack (GT + ML)"),
     ("Esc", "Back to the main menu"),
     ("V  /  F11", "Sound on / off  -  Full screen")
 ]
 
 TIPS = [
-    "Survive as many days as you can.",
+    f"Survive {GOAL_DAYS} days until rescue comes (then keep going if you like).",
     "Keep Food and Water above half and your health slowly heals.",
     "Rain puts out fires: tent. Cold drains energy: campfire.",
     "Read the sky: clouds often bring rain, wind a cold snap.",
-    "Wolves hunt from further away at night.",
-    "Watch AI Survive: the AI uses an MDP, A* search and an HMM."
+    "Wolves learn your habits: mix attacking and backing away.",
+    "Watch AI Survive: MDP, A* search, HMM and game theory."
 ]
 
 GOLD = (250, 204, 96)

@@ -5,6 +5,7 @@ hunger = 40
 thirst = 50
 energy = 60
 is_alive = True
+last_cause = None       #WHAT LAST HURT THE PLAYER: "wolf", "hunger", "thirst", "hunger and thirst", "cold"
 
 #WOLF BITES (difficulty.py RAISES THIS AS THE DAYS GO BY)
 WOLF_DAMAGE = 10
@@ -45,8 +46,10 @@ def drink_water():
 
 def wolf_attack():
     global health, _time_since_hit
+    global last_cause
     health = max(health - WOLF_DAMAGE, 0)
     _time_since_hit = 0
+    last_cause = "wolf"
     print(f"A wolf attacks you! You lost {WOLF_DAMAGE} health.")
 
 def regenerate(dt, resting=False):
@@ -90,9 +93,15 @@ def drain_needs(dt, day_length):
         while _starve_timer >= 1500:
             health = max(0, health - 1)
             _starve_timer -= 1500
+            set_cause("hunger and thirst" if hunger >= 100 and thirst >= 100
+                      else "hunger" if hunger >= 100 else "thirst")
         check_death()
     else:
         _starve_timer = 0
+
+def set_cause(cause):
+    global last_cause
+    last_cause = cause
 
 def sleep():
     global energy
@@ -152,6 +161,8 @@ def reset_survival():
     _need_buffer[0] = _need_buffer[1] = 0.0
     _starve_timer = 0
 
+    global last_cause
+    last_cause = None
     health = 100
     hunger = 40
     thirst = 50

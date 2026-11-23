@@ -15,6 +15,7 @@ import random
 import pygame
 import game_clock
 import mdp
+import game_theory
 import search
 import world
 import weather
@@ -49,6 +50,7 @@ class Controls:
         self.dx = 0
         self.dy = 0
         self.actions = []       #ANY OF: "interact", "campfire", "tent", "attack"
+        self.hold = False       #HOLDING E (CHOPPING A TREE / MINING A ROCK)
 
 
 #----------------------------------------------------------------
@@ -96,6 +98,8 @@ def first_interaction(rect):
 def nearest_wolf(player_rect, wolf_list):
     best, best_d = None, 1e9
     for wolf_data in wolf_list:
+        if not wolves_module.is_threat(wolf_data):
+            continue        #THIS WOLF HAS GIVEN UP AND IS WANDERING AWAY
         d = math.hypot(wolf_data["rect"].centerx - player_rect.centerx,
                        wolf_data["rect"].centery - player_rect.centery)
         if d < best_d:
@@ -359,6 +363,14 @@ def gather_task(agent, task, player_rect, controls, now):
         )
         if finished:
             task["done"] = True
+        elif action in ("gather_wood", "gather_stone"):
+            #HOLD E UNTIL THE WOOD / STONE COMES (harvest.py); GIVE UP IF NOTHING HAPPENS
+            task.setdefault("hold_since", now)
+            if now - task["hold_since"] > 4000:
+                agent.excluded[task["target"]] = now + 20000
+                task["failed"] = True
+            else:
+                controls.hold = True
         elif task["presses"] >= 4:
             agent.excluded[task["target"]] = now + 20000
             task["failed"] = True
@@ -466,6 +478,23 @@ def fight_task(agent, task, player_rect, player_direction, wolf_list, controls, 
     dx, dy = wolf.centerx - player_rect.centerx, wolf.centery - player_rect.centery
     wanted = ("right" if dx > 0 else "left") if abs(dx) >= abs(dy) else ("down" if dy > 0 else "up")
 
+    #CLOSE: AN ENCOUNTER. EVERY ROUND, PICK ATTACK OR EVADE FROM THE NASH EQUILIBRIUM OF THE
+    #ENCOUNTER GAME (game_theory.py). MIXING LIKE THIS MEANS THE WOLVES CAN'T LEARN TO EXPLOIT IT
+    if distance < wolves_module.ENGAGE_RANGE:
+        if now >= task.get("round_until", 0):
+            bite, health, fire = wolves_module.round_context(wolf_data)
+            mix, _, _ = game_theory.equilibrium(bite, health, fire)
+            task["tactic"] = random.choices(range(len(mix)), weights=mix)[0]
+            task["round_until"] = now + wolves_module.ROUND_TIME
+            agent.last_reason = (f"Nash mix: attack {mix[0]:.0%} / evade {mix[1]:.0%} -> "
+                                 f"{game_theory.PLAYER_TACTICS[task['tactic']]}")
+        if task["tactic"] == game_theory.EVADE:
+            #BACK AWAY FROM THE WOLF
+            away = (player_rect.centerx - dx / max(1, distance) * 60,
+                    player_rect.centery - dy / max(1, distance) * 60)
+            steer_to(away, player_rect, controls)
+            return
+
     if distance > 70:
         #GET CLOSER (A* IF FAR, OTHERWISE STRAIGHT AT IT)
         if distance > 160:
@@ -528,8 +557,8 @@ _fonts = {}
 
 def draw_overlay(screen, agent, camera, player_rect):
     if not _fonts:
-        _fonts["bold"] = pygame.font.SysFont("Arial", 15, bold=True)
-        _fonts["small"] = pygame.font.SysFont("Arial", 13)
+        _fonts["bold"] = pygame.font.SysFont("Arial", 12, bold=True)
+        _fonts["small"] = pygame.font.SysFont("Arial", 11)
     task = agent.task
 
     #PLANNED PATH AS A LINE OF DOTS
@@ -540,31 +569,32 @@ def draw_overlay(screen, agent, camera, player_rect):
         r, c = task["path"][-1]
         pygame.draw.circle(screen, (255, 230, 120), (c * CELL + 20 - camera.x, r * CELL + 20 - camera.y), 9, 2)
 
-    #PANEL
-    panel = pygame.Rect(10, 200, 262, 176)
+    #PANEL (UNDER THE STATS, TOP LEFT)
+    import hud
+    panel = pygame.Rect(8, hud.left_panel_y, 214, 132)
     surface = pygame.Surface(panel.size, pygame.SRCALPHA)
-    pygame.draw.rect(surface, (18, 22, 28, 190), surface.get_rect(), border_radius=10)
-    pygame.draw.rect(surface, (250, 204, 96, 140), surface.get_rect(), width=1, border_radius=10)
+    pygame.draw.rect(surface, (18, 22, 28, 185), surface.get_rect(), border_radius=8)
+    pygame.draw.rect(surface, (250, 204, 96, 130), surface.get_rect(), width=1, border_radius=8)
     screen.blit(surface, panel.topleft)
 
-    x, y = panel.x + 10, panel.y + 8
+    x, y = panel.x + 7, panel.y + 5
     tag = _fonts["bold"].render("AI MODE", True, (40, 30, 20))
-    tag_rect = pygame.Rect(x, y, tag.get_width() + 12, 20)
-    pygame.draw.rect(screen, (250, 204, 96), tag_rect, border_radius=5)
-    screen.blit(tag, (x + 6, y + 1))
+    tag_rect = pygame.Rect(x, y, tag.get_width() + 8, 15)
+    pygame.draw.rect(screen, (250, 204, 96), tag_rect, border_radius=4)
+    screen.blit(tag, (x + 4, y + 1))
     speed = getattr(agent, "sim_speed", 1)
-    screen.blit(_fonts["small"].render(f"Speed x{speed} (keys 1-4)", True, (190, 195, 200)),
-                (tag_rect.right + 8, y + 3))
+    screen.blit(_fonts["small"].render(f"speed x{speed} (keys 1-4)", True, (190, 195, 200)),
+                (tag_rect.right + 6, y + 2))
 
-    y += 28
+    y += 19
     doing = ACTION_LABELS.get(task["action"], "-") if task else "Thinking..."
     screen.blit(_fonts["bold"].render(f"Doing: {doing}", True, (240, 240, 235)), (x, y))
-    y += 19
+    y += 14
     screen.blit(_fonts["small"].render(f"Why: {agent.last_reason}", True, (190, 195, 200)), (x, y))
 
     if agent.state is not None:
         s = agent.state
-        y += 22
+        y += 16
         line1 = f"health {mdp.HEALTH_LEVELS[s[0]]}, food {mdp.FOOD_LEVELS[s[1]]}, water {mdp.WATER_LEVELS[s[2]]}"
         line2 = f"energy {mdp.ENERGY_LEVELS[s[3]]}, wood {mdp.WOOD_LEVELS[s[4]]}, stone {mdp.STONE_LEVELS[s[5]]}"
         context = mdp.CONTEXTS[s[6]]
@@ -574,10 +604,10 @@ def draw_overlay(screen, agent, camera, player_rect):
                  f"shelter: {mdp.SHELTER_LEVELS[s[8]]}")
         for line in (line1, line2, line3):
             screen.blit(_fonts["small"].render(line, True, (170, 210, 255)), (x, y))
-            y += 16
+            y += 12
 
         #TOP 3 ACTIONS BY Q-VALUE
-        y += 4
+        y += 3
         ranked = [(act, q) for act, q in agent.ranked_actions(s)
                   if agent.feasible(act, player_rect, [])][:3]
         best_q = ranked[0][1] if ranked else 0
@@ -585,5 +615,5 @@ def draw_overlay(screen, agent, camera, player_rect):
             label = ACTION_LABELS[action]
             screen.blit(_fonts["small"].render(f"{label}", True, (240, 240, 235)), (x, y))
             screen.blit(_fonts["small"].render(f"Q = {q:.1f}", True, (250, 204, 96) if q == best_q else (190, 195, 200)),
-                        (panel.right - 72, y))
-            y += 15
+                        (panel.right - 56, y))
+            y += 12

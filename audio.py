@@ -19,7 +19,7 @@ SOUND_VOLUME = {
     "wolf_yelp": 0.55, "wolf_die": 0.6, "wolf_bite": 0.8, "hurt": 0.45,
     "build_fire": 0.7, "build_tent": 0.7, "relight": 0.6, "extinguish": 0.6, "rest": 0.5,
     "fail": 0.35, "menu_move": 0.35, "menu_select": 0.5, "birds": 0.45, "howl": 0.55,
-    "thunder": 0.8, "wind_gust": 0.5, "game_over": 0.7
+    "thunder": 0.8, "wind_gust": 0.5, "game_over": 0.7, "victory": 0.8
 }
 LOOP_VOLUME = {"loop_rain": 0.55, "loop_wind": 0.5, "loop_fire": 0.6}
 

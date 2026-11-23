@@ -520,6 +520,17 @@ def game_over():
     return reverb(out, 0.35)
 
 
+def victory():
+    #A RISING, HOPEFUL FANFARE: ARPEGGIO, THEN A WARM CHORD
+    out = np.zeros(int(4.2 * SR))
+    for k, note in enumerate((60, 64, 67, 72, 76)):
+        place(out, bell(midi(note), 1.6), k * 0.16, 0.45)
+        place(out, pluck(midi(note - 12), 1.2, 0.997, 0.4), k * 0.16, 0.35)
+    place(out, pad([midi(n) for n in (60, 64, 67, 72)], 2.8, 1400), 0.85, 0.5)
+    place(out, bell(midi(84), 2.2), 0.85, 0.3)
+    return reverb(out, 0.35)
+
+
 # ------------------------------------------------------------------ ambient loops
 def loop_rain():
     dur = 6.5
@@ -566,6 +577,7 @@ if __name__ == "__main__":
         "build_fire": build_fire, "build_tent": build_tent, "relight": relight, "extinguish": extinguish,
         "rest": rest, "fail": fail, "menu_move": menu_move, "menu_select": menu_select,
         "birds": birds, "howl": howl, "thunder": thunder, "wind_gust": wind_gust, "game_over": game_over,
+        "victory": victory,
     }
     loops = {"loop_rain": loop_rain, "loop_wind": loop_wind, "loop_fire": loop_fire}
     for name, fn in sfx.items():

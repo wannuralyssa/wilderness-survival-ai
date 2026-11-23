@@ -10,6 +10,7 @@ import wolves
 import weather
 import ai_agent
 import tent_art
+import harvest
 import game_clock
 
 #THE CAMERA IS THE PART OF THE WORLD SHOWN ON SCREEN
@@ -85,9 +86,8 @@ def draw_frame(screen, font, day, player_rect, player_direction, is_night, night
         [wolves.eye_positions(wolf_data) for wolf_data in wolf_list]
     )
 
-    #AI MODE: SHOW THE AI'S PLAN AND WHAT IT IS THINKING
-    if ai is not None:
-        ai_agent.draw_overlay(screen, ai, camera, player_rect)
+    #CHOPPING / MINING: FLYING CHIPS AND THE PROGRESS RING
+    harvest.draw(screen, camera)
 
     #DRAW HUD (STATS, DAY, WEATHER AND RESOURCES)
     hud.draw_hud(
@@ -99,6 +99,10 @@ def draw_frame(screen, font, day, player_rect, player_direction, is_night, night
         weather,
         wolves.wolves_defeated
     )
+
+    #AI MODE: SHOW THE AI'S PLAN AND WHAT IT IS THINKING
+    if ai is not None:
+        ai_agent.draw_overlay(screen, ai, camera, player_rect)
 
     #DRAW NOTIFICATION
     messages.draw_message(screen, font)

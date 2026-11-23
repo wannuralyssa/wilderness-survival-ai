@@ -250,6 +250,7 @@ def _update_survival(dt, player_rect):
         whole = int(_health_buffer)
         if whole > 0:
             survival.health = max(0, survival.health - whole)
+            survival.last_cause = "cold"
             _health_buffer -= whole
             survival.check_death()
 

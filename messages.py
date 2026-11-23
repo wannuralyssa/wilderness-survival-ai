@@ -12,7 +12,7 @@ message_style = None
 
 SLIDE_TIME = 180        #MILLISECONDS TO SLIDE IN
 FADE_TIME = 250         #MILLISECONDS TO FADE OUT AT THE END
-BOTTOM_GAP = 22         #SPACE BETWEEN THE NOTIFICATION AND THE BOTTOM OF THE SCREEN
+BOTTOM_GAP = 14         #SPACE BETWEEN THE NOTIFICATION AND THE BOTTOM OF THE SCREEN
 
 #ACCENT COLOURS FOR EACH KIND OF MESSAGE
 GOOD = (110, 205, 120)
@@ -86,9 +86,9 @@ def draw_message(screen, font):
         return
 
     if not fonts:
-        fonts["text"] = pygame.font.SysFont("Arial", 16, bold=True)
+        fonts["text"] = pygame.font.SysFont("Arial", 13, bold=True)
     icon_name, accent = message_style or (None, INFO)
-    icon = hud.icons.get(icon_name) if icon_name else None
+    icon = hud.small_icons.get(icon_name) if icon_name else None
 
     #SLIDE UP AT THE START, FADE OUT AT THE END
     slide = min(1.0, elapsed / SLIDE_TIME)
@@ -97,29 +97,29 @@ def draw_message(screen, font):
 
     text = fonts["text"].render(message_text, True, (245, 242, 232))
     shadow = fonts["text"].render(message_text, True, (0, 0, 0))
-    icon_space = 40 if icon else 18
-    width = min(WIDTH - 40, text.get_width() + icon_space + 28)
-    height = 42
+    icon_space = 30 if icon else 14
+    width = min(WIDTH - 40, text.get_width() + icon_space + 22)
+    height = 30
 
     card = pygame.Surface((width, height + 4), pygame.SRCALPHA)
     body = pygame.Rect(0, 0, width, height)
 
     #DROP SHADOW, DARK BODY, COLOURED STRIPE ON THE LEFT, THIN BORDER
-    pygame.draw.rect(card, (0, 0, 0, 90), body.move(0, 3), border_radius=12)
-    pygame.draw.rect(card, (20, 24, 30, 215), body, border_radius=12)
-    pygame.draw.rect(card, (*accent, 255), (0, 0, 7, height),
-                     border_top_left_radius=12, border_bottom_left_radius=12)
-    pygame.draw.rect(card, (255, 255, 255, 40), body, width=1, border_radius=12)
+    pygame.draw.rect(card, (0, 0, 0, 90), body.move(0, 3), border_radius=9)
+    pygame.draw.rect(card, (20, 24, 30, 215), body, border_radius=9)
+    pygame.draw.rect(card, (*accent, 255), (0, 0, 5, height),
+                     border_top_left_radius=9, border_bottom_left_radius=9)
+    pygame.draw.rect(card, (255, 255, 255, 40), body, width=1, border_radius=9)
 
     #ICON IN A SOFT COLOURED CIRCLE (OR A SMALL DOT WHEN THERE IS NO ICON)
-    x = 16
+    x = 12
     if icon:
-        pygame.draw.circle(card, (*accent, 60), (x + 12, height // 2), 14)
-        card.blit(icon, icon.get_rect(center=(x + 12, height // 2)))
-        x += 34
+        pygame.draw.circle(card, (*accent, 60), (x + 9, height // 2), 11)
+        card.blit(icon, icon.get_rect(center=(x + 9, height // 2)))
+        x += 25
     else:
-        pygame.draw.circle(card, (*accent, 255), (x + 2, height // 2), 4)
-        x += 12
+        pygame.draw.circle(card, (*accent, 255), (x + 2, height // 2), 3)
+        x += 10
 
     text_y = (height - text.get_height()) // 2
     card.blit(shadow, (x + 1, text_y + 1))
@@ -129,8 +129,8 @@ def draw_message(screen, font):
     left = 1 - elapsed / message_duration
     timer_width = int((width - 24) * left)
     if timer_width > 0:
-        pygame.draw.rect(card, (*accent, 150), (12, height - 4, timer_width, 2), border_radius=1)
+        pygame.draw.rect(card, (*accent, 150), (12, height - 3, timer_width, 1))
 
     card.set_alpha(int(255 * max(0.0, alpha)))
-    y = HEIGHT - BOTTOM_GAP - height + int((1 - slide) * 24)
+    y = HEIGHT - BOTTOM_GAP - height + int((1 - slide) * 18)
     screen.blit(card, ((WIDTH - width) // 2, y))

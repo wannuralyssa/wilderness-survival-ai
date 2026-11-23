@@ -7,6 +7,7 @@ import hud
 import player as player_module
 import messages
 import interactions
+import harvest
 import time_system
 import renderer
 import game_over as game_over_screen
@@ -18,6 +19,7 @@ import os
 import game_clock
 import difficulty
 import audio
+import pack_learning
 
 pygame.init()
 
@@ -40,6 +42,7 @@ world.load_world_assets()
 player_module.load_player_frames()
 hud.load_assets()
 wolves.load_wolf_frames()
+pack_learning.load()        #WHAT THE WOLVES REMEMBER ABOUT YOU FROM EARLIER GAMES
 
 #IN-GAME TIME (GAME CLOCK, SO AI MODE CAN FAST-FORWARD)
 start_time = game_clock.now()
@@ -72,6 +75,11 @@ def toggle_fullscreen():
     except pygame.error:
         pass
 
+#HOW THE RUN ENDED: "rescued" / "escaped" (VICTORY) OR WHAT KILLED YOU ("wolf", "cold", ...)
+ending = None
+endless = False             #AFTER A VICTORY YOU CAN KEEP GOING (C) FOR A HIGH SCORE
+end_background = None       #THE LAST FRAME, SHOWN DIMMED BEHIND THE ENDING
+
 #GAME MODE: False = YOU PLAY, True = THE AI PLAYS
 ai_mode = False
 ai = None
@@ -102,22 +110,31 @@ def restart_game(mode=None):
     global start_time, previous_elapsed_time
     global wolf_list
     global ai_mode, ai, run_logged
+    global ending, endless, end_background
 
     #"play" = YOU PLAY, "ai" = WATCH THE AI SURVIVE, None = KEEP THE SAME MODE
     if mode is not None:
         ai_mode = mode == "ai"
         hud.show_hmm = ai_mode      #THE FORECAST PANEL STARTS OPEN WHEN WATCHING THE AI (H TOGGLES IT)
+        hud.show_pack = ai_mode     #SO DOES THE WOLF PACK PANEL (G TOGGLES IT)
+    #THE PACK LEARNS YOUR HABITS AND THE AI'S HABITS SEPARATELY
+    wolves.LEARNING_MODE = "ai" if ai_mode else "play"
+    pack_learning.save()
     if ai_mode:
         if ai is None:
             ai = ai_agent.Agent()
         ai.reset()
     run_logged = False
+    ending = None
+    endless = False
+    end_background = None
 
     #RESET SURVIVAL STATS
     survival.reset_survival()
 
     #RESET WORLD
     world.reset_world()
+    harvest.clear()
 
     #RESET PLAYER
     player = player_module.create_player(*world.PLAYER_START)
@@ -145,11 +162,23 @@ def restart_game(mode=None):
 
 def log_ai_run():
     #SAVE EACH AI RUN (USEFUL FOR COMPARING VERSIONS OF THE AI, AND FOR MACHINE LEARNING LATER)
-    new_file = not os.path.exists("ai_runs.csv")
-    with open("ai_runs.csv", "a") as f:
-        if new_file:
-            f.write("days_survived,wolves_defeated,decisions\n")
-        f.write(f"{days_survived},{wolves.wolves_defeated},{ai.decisions}\n")
+    header = "days_survived,wolves_defeated,decisions,outcome\n"
+    try:
+        rows = []
+        if os.path.exists("ai_runs.csv"):
+            with open("ai_runs.csv") as f:
+                rows = f.read().splitlines()
+        if not rows or rows[0].strip() != header.strip():
+            #OLDER FILE WITHOUT THE OUTCOME COLUMN: ADD IT
+            old = rows[1:] if rows else []
+            with open("ai_runs.csv", "w") as f:
+                f.write(header)
+                for row in old:
+                    f.write(row + ",\n")
+        with open("ai_runs.csv", "a") as f:
+            f.write(f"{days_survived},{wolves.wolves_defeated},{ai.decisions},{ending}\n")
+    except OSError:
+        pass
 
 
 def open_menu():
@@ -169,7 +198,7 @@ def update_game(dt):
     #ONE STEP OF THE GAME (EVERYTHING EXCEPT DRAWING). IN AI MODE THIS CAN RUN SEVERAL
     #TIMES PER FRAME TO FAST-FORWARD.
     global day, days_survived, game_over, is_night, previous_elapsed_time
-    global player, player_direction, player_is_moving
+    global player, player_direction, player_is_moving, ending
 
     game_clock.advance(dt)
     was_night = is_night
@@ -190,9 +219,21 @@ def update_game(dt):
     #HANDLE NEW DAY: THE WILDERNESS GETS HARSHER
     if day_changed:
         days_survived = day - 1
+        if day == GOAL_DAYS + 1 and not endless:
+            #VICTORY: YOU LASTED GOAL_DAYS FULL DAYS. A CAMPFIRE'S SMOKE BRINGS THE RESCUERS;
+            #WITHOUT ONE YOU FIND YOUR OWN WAY OUT
+            ending = "rescued" if world.lit_campfires() else "escaped"
+            game_over = True
+            audio.play("victory")
+            pack_learning.save()
+            return
         audio.play("birds")
         difficulty.apply(day)
-        messages.show_message(f"Day {day}: it gets harsher ({difficulty.describe(day)})", 3500)
+        left = GOAL_DAYS + 1 - day
+        if 0 < left <= 3 and not endless:
+            messages.show_message(f"Day {day}: hold on, rescue may come in {left} day{'s' if left > 1 else ''}!", 3500)
+        else:
+            messages.show_message(f"Day {day}: it gets harsher ({difficulty.describe(day)})", 3500)
 
     #A WOLF HOWLS AS NIGHT FALLS
     if is_night and not was_night:
@@ -269,6 +310,15 @@ def update_game(dt):
                        world.terrain_at(player.centerx, player.bottom - 4))
 
     #MOVE THE WOLVES
+    #HOLD E TO CHOP / MINE (THE AI "HOLDS" TOO). LETTING GO OR WALKING AWAY LOSES THE PROGRESS
+    if ai_mode:
+        holding = controls.hold
+    else:
+        holding = survival.is_alive and pygame.key.get_pressed()[pygame.K_e]
+    facing = harvest.update(dt, holding, player)
+    if facing:
+        player_direction = facing       #FACE THE TREE / ROCK WHILE WORKING ON IT
+
     wolves.move_wolves(wolf_list, WORLD_WIDTH, WORLD_HEIGHT, player, world.obstacles)
 
     #WOLF ATTACK
@@ -289,7 +339,9 @@ def update_game(dt):
     if not survival.is_alive:
         game_over = True
         days_survived = day - 1
+        ending = survival.last_cause
         audio.play("game_over")
+        pack_learning.save()
 
 
 #GAME LOOP
@@ -304,7 +356,14 @@ while running:
             toggle_fullscreen()
         elif event.type == pygame.KEYDOWN:
             if game_over:
-                if event.key == pygame.K_r:
+                if event.key == pygame.K_c and ending in ("rescued", "escaped") and not endless:
+                    #KEEP SURVIVING AFTER THE RESCUE, FOR A HIGHER SCORE
+                    endless = True
+                    game_over = False
+                    end_background = None
+                    difficulty.apply(day)
+                    messages.show_message("Endless mode: how long can you last?", 3000)
+                elif event.key == pygame.K_r:
                     restart_game()
                 elif event.key == pygame.K_q:
                     running = False
@@ -312,6 +371,9 @@ while running:
                     #BACK TO THE MAIN MENU
                     if not open_menu():
                         running = False
+            elif event.key == pygame.K_g:
+                #SHOW / HIDE THE WOLF PACK PANEL (GAME THEORY + MACHINE LEARNING)
+                hud.show_pack = not hud.show_pack
             elif event.key == pygame.K_h:
                 #SHOW / HIDE THE WEATHER FORECAST (HMM) PANEL
                 hud.show_hmm = not hud.show_hmm
@@ -351,7 +413,7 @@ while running:
         player_is_moving = False
 
     #MUSIC FOR THE TIME OF DAY, AND RAIN / WIND / CAMPFIRE SOUNDS
-    audio.update_world(weather, world, player, game_over)
+    audio.update_world(weather, world, player, game_over and ending not in ("rescued", "escaped"))
 
     #UPDATE PLAYER ANIMATION
     player_module.update_player_animation(player_is_moving, player_direction, dt * steps)
@@ -361,8 +423,11 @@ while running:
         if ai_mode and not run_logged:
             log_ai_run()
             run_logged = True
-        screen.fill((20, 20, 20))
-        game_over_screen.gameover(screen, font, days_survived, wolves.wolves_defeated)
+        if end_background is None:
+            end_background = screen.copy()      #THE LAST FRAME OF THE RUN
+        game_over_screen.draw_ending(screen, end_background, ending, days_survived, wolves.wolves_defeated,
+                                     ai_mode, ending in ("rescued", "escaped") and not endless,
+                                     pygame.time.get_ticks())
         pygame.display.flip()
     else:
         if ai_mode:
@@ -379,4 +444,5 @@ while running:
             ai if ai_mode else None
         )
 
+pack_learning.save()
 pygame.quit()

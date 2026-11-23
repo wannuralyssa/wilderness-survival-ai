@@ -334,7 +334,9 @@ def observe(survival, world_module, weather_module, player_rect, wolf_list):
     else:
         ctx = DAY
     px, py = player_rect.center
-    threat = int(any(math.hypot(wd_["rect"].centerx - px, wd_["rect"].centery - py) < 230 for wd_ in wolf_list))
+    import wolves
+    threat = int(any(math.hypot(wd_["rect"].centerx - px, wd_["rect"].centery - py) < 230
+                     for wd_ in wolf_list if wolves.is_threat(wd_)))
     def near(things):
         return any(math.hypot(s.centerx - px, s.centery - py) < SHELTER_RANGE for s in things)
     shelter = 2 if near(world_module.tents) else 1 if near(world_module.lit_campfires()) else 0
